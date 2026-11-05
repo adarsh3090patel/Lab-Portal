@@ -2,6 +2,7 @@ package com.example.labportal.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +60,7 @@ import com.example.labportal.ui.theme.MmyrvBorder
 import com.example.labportal.ui.theme.MmyrvPrimary
 import com.example.labportal.ui.theme.MmyrvTextDark
 import com.example.labportal.ui.theme.MmyrvTextMuted
+import com.example.labportal.util.FaceDetectionHelper
 import kotlinx.coroutines.launch
 
 @Composable
@@ -375,6 +378,10 @@ private fun StudentApprovalCard(
     onApprove: () -> Unit,
     onReject: () -> Unit
 ) {
+    var showFullFaceDialog by remember { mutableStateOf(false) }
+    val realFaceBitmap = remember(student.facePhotoUrl) {
+        FaceDetectionHelper.base64ToImageBitmap(student.facePhotoUrl)
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -517,15 +524,25 @@ private fun StudentApprovalCard(
                             .size(54.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFF0F172A))
-                            .border(1.5.dp, Color(0xFF10B981), RoundedCornerShape(12.dp)),
+                            .border(1.5.dp, Color(0xFF10B981), RoundedCornerShape(12.dp))
+                            .clickable { if (realFaceBitmap != null) showFullFaceDialog = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_face_recognition),
-                            contentDescription = "Biometric Face Preview",
-                            tint = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.size(30.dp)
-                        )
+                        if (realFaceBitmap != null) {
+                            Image(
+                                bitmap = realFaceBitmap,
+                                contentDescription = "Real Student Face",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_face_recognition),
+                                contentDescription = "Biometric Face Preview",
+                                tint = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -625,6 +642,89 @@ private fun StudentApprovalCard(
                 }
             }
         }
+    }
+
+    // High-Resolution Biometric Face Verification Modal for Admin
+    if (showFullFaceDialog && realFaceBitmap != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showFullFaceDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_face_recognition),
+                        contentDescription = null,
+                        tint = MmyrvPrimary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Biometric Face Verification",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = AppFontFamily,
+                        color = MmyrvTextDark
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Verify this enrolled photo matches student identity before approving.",
+                        fontSize = 12.sp,
+                        fontFamily = AppFontFamily,
+                        color = MmyrvTextMuted,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Image(
+                        bitmap = realFaceBitmap,
+                        contentDescription = "Full Student Face",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(200.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .border(2.dp, Color(0xFF10B981), RoundedCornerShape(18.dp))
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = student.fullName,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = AppFontFamily,
+                        color = MmyrvTextDark
+                    )
+                    Text(
+                        text = "${student.programme} • ${student.semester}",
+                        fontSize = 12.sp,
+                        fontFamily = AppFontFamily,
+                        color = MmyrvPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Roll No: ${student.rollNo} • Phone: ${student.phone}",
+                        fontSize = 11.5.sp,
+                        fontFamily = AppFontFamily,
+                        color = MmyrvTextMuted
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showFullFaceDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(text = "Close Inspection", fontFamily = AppFontFamily)
+                }
+            }
+        )
     }
 }
 

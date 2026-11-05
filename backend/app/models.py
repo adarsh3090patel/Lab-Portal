@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 class UserRegisterRequest(BaseModel):
     fullName: str
@@ -12,6 +12,11 @@ class UserRegisterRequest(BaseModel):
     phone: Optional[str] = "+91 98765 43210"
     faceEnrolled: Optional[bool] = True
     facePhotoUrl: Optional[str] = ""
+
+class CourseCreateRequest(BaseModel):
+    name: str
+    code: str
+    semesters: List[str]
 
 class UserLoginRequest(BaseModel):
     email: str

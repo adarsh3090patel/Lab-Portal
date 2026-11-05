@@ -1,5 +1,9 @@
 package com.example.labportal.ui.screens
 
+import android.graphics.Bitmap
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -7,6 +11,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +41,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -44,7 +53,9 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,6 +66,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +81,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.labportal.R
+import com.example.labportal.network.CourseDto
+import com.example.labportal.network.NetworkClient
 import com.example.labportal.ui.components.BackgroundCurves
 import com.example.labportal.ui.components.PortalHeader
 import com.example.labportal.ui.theme.AppFontFamily
@@ -76,6 +92,7 @@ import com.example.labportal.ui.theme.MmyrvBorder
 import com.example.labportal.ui.theme.MmyrvPrimary
 import com.example.labportal.ui.theme.MmyrvTextDark
 import com.example.labportal.ui.theme.MmyrvTextMuted
+import com.example.labportal.util.FaceDetectionHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -85,6 +102,7 @@ enum class UserRole(val label: String) {
     LAB_ASSISTANT("Lab Assistant")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreen(
     onRegisterClick: (
@@ -96,25 +114,38 @@ fun RegisterScreen(
         programme: String,
         semester: String,
         phone: String,
-        faceEnrolled: Boolean
-    ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
+        faceEnrolled: Boolean,
+        facePhotoUrl: String
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _ -> },
     onNavigateToLogin: () -> Unit = {},
     isLoading: Boolean = false,
     errorMessage: String? = null
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var rollNo by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var selectedRole by remember { mutableStateOf(UserRole.STUDENT) }
+
+    // Dynamic Courses & Semesters managed by Admin
+    val availableCourses = remember { mutableStateListOf<CourseDto>() }
     var programme by remember { mutableStateOf("B.Sc. (Computer Science)") }
     var semester by remember { mutableStateOf("Semester V") }
+    var programmeExpanded by remember { mutableStateOf(false) }
+    var semesterExpanded by remember { mutableStateOf(false) }
+
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var agreeTerms by remember { mutableStateOf(false) }
 
-    // Biometric Face Enrollment State
+    // Real Facial Recognition Biometric State
     var faceEnrolled by remember { mutableStateOf(false) }
+    var facePhotoBase64 by remember { mutableStateOf("") }
+    var capturedFaceBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var faceDetectionMsg by remember { mutableStateOf<String?>(null) }
     var showFaceScanModal by remember { mutableStateOf(false) }
     var localValidationMsg by remember { mutableStateOf<String?>(null) }
 
@@ -124,8 +155,46 @@ fun RegisterScreen(
     val focusManager = LocalFocusManager.current
     val scrollState = rememberScrollState()
 
-    val availableProgrammes = listOf("B.Sc. (Computer Science)", "BCA", "B.Tech CSE", "M.Sc. IT")
-    val availableSemesters = listOf("Semester I", "Semester III", "Semester V", "Semester VII")
+    // Load available courses and semesters from Backend / Admin API
+    LaunchedEffect(Unit) {
+        try {
+            val response = NetworkClient.apiService.getCourses()
+            if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                availableCourses.clear()
+                availableCourses.addAll(response.body()!!)
+                programme = availableCourses.first().name
+                semester = availableCourses.first().semesters.firstOrNull() ?: "Semester I"
+            } else {
+                availableCourses.clear()
+                availableCourses.addAll(defaultStaticCourses())
+            }
+        } catch (_: Exception) {
+            if (availableCourses.isEmpty()) {
+                availableCourses.addAll(defaultStaticCourses())
+            }
+        }
+    }
+
+    // Real Camera Capture Launcher
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            val analysis = FaceDetectionHelper.analyzeFace(bitmap)
+            capturedFaceBitmap = bitmap
+            facePhotoBase64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+            faceEnrolled = true
+            faceDetectionMsg = analysis.message
+            localValidationMsg = null
+            Toast.makeText(context, "Real Face Captured: ${analysis.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Current selected course's semester list
+    val currentCourseSemesters = remember(programme, availableCourses.size) {
+        availableCourses.find { it.name == programme }?.semesters
+            ?: listOf("Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI")
+    }
 
     Box(
         modifier = Modifier
@@ -293,12 +362,12 @@ fun RegisterScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // University Email
+                    // University Email (Strictly "University Email" without any eg)
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it; localValidationMsg = null },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("University Email (e.g. adarsh@mmyrv.ac.in)", color = Color(0xFF94A3B8), fontSize = 14.sp) },
+                        placeholder = { Text("University Email", color = Color(0xFF94A3B8), fontSize = 14.sp) },
                         leadingIcon = {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_email),
@@ -328,7 +397,7 @@ fun RegisterScreen(
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = {
                             Text(
-                                text = if (selectedRole == UserRole.STUDENT) "Enrollment / Roll No. (e.g. 25CS0101)" else "Faculty / Staff ID",
+                                text = if (selectedRole == UserRole.STUDENT) "Enrollment / Roll No." else "Faculty / Staff ID",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 14.sp
                             )
@@ -381,50 +450,77 @@ fun RegisterScreen(
                         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
                     )
 
-                    // Additional Student-Specific Academic Fields
+                    // Student-Specific Academic Fields (Admin-Managed Dropdowns)
                     if (selectedRole == UserRole.STUDENT) {
                         Spacer(modifier = Modifier.height(14.dp))
+
+                        // Degree / Programme Dropdown
                         Text(
-                            text = "Degree Programme",
+                            text = "Degree / Programme",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             fontFamily = AppFontFamily,
                             color = MmyrvTextDark
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+
+                        ExposedDropdownMenuBox(
+                            expanded = programmeExpanded,
+                            onExpandedChange = { programmeExpanded = !programmeExpanded },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            availableProgrammes.take(2).forEach { prog ->
-                                val isSelected = programme == prog
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC))
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (isSelected) MmyrvPrimary else Color(0xFFE2E8F0),
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { programme = prog }
-                                        .padding(vertical = 7.dp, horizontal = 4.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = prog,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        fontFamily = AppFontFamily,
-                                        color = if (isSelected) MmyrvPrimary else MmyrvTextMuted,
-                                        textAlign = TextAlign.Center
+                            OutlinedTextField(
+                                value = programme,
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = programmeExpanded)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_school),
+                                        contentDescription = null,
+                                        tint = MmyrvPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MmyrvPrimary,
+                                    unfocusedBorderColor = MmyrvBorder,
+                                    focusedContainerColor = Color(0xFFFAFAFC),
+                                    unfocusedContainerColor = Color(0xFFFAFAFC)
+                                )
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = programmeExpanded,
+                                onDismissRequest = { programmeExpanded = false }
+                            ) {
+                                availableCourses.forEach { course ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(text = course.name, fontWeight = FontWeight.SemiBold, fontFamily = AppFontFamily)
+                                                Text(text = "Code: ${course.code}", fontSize = 11.sp, color = MmyrvTextMuted)
+                                            }
+                                        },
+                                        onClick = {
+                                            programme = course.name
+                                            semester = course.semesters.firstOrNull() ?: "Semester I"
+                                            programmeExpanded = false
+                                        }
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Semester Dropdown
                         Text(
                             text = "Current Semester",
                             fontSize = 13.sp,
@@ -433,33 +529,50 @@ fun RegisterScreen(
                             color = MmyrvTextDark
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+
+                        ExposedDropdownMenuBox(
+                            expanded = semesterExpanded,
+                            onExpandedChange = { semesterExpanded = !semesterExpanded },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            availableSemesters.forEach { sem ->
-                                val isSelected = semester == sem
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC))
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (isSelected) MmyrvPrimary else Color(0xFFE2E8F0),
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { semester = sem }
-                                        .padding(vertical = 7.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = sem.replace("Semester ", "Sem "),
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        fontFamily = AppFontFamily,
-                                        color = if (isSelected) MmyrvPrimary else MmyrvTextMuted,
-                                        textAlign = TextAlign.Center
+                            OutlinedTextField(
+                                value = semester,
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = semesterExpanded)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_resources),
+                                        contentDescription = null,
+                                        tint = MmyrvPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MmyrvPrimary,
+                                    unfocusedBorderColor = MmyrvBorder,
+                                    focusedContainerColor = Color(0xFFFAFAFC),
+                                    unfocusedContainerColor = Color(0xFFFAFAFC)
+                                )
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = semesterExpanded,
+                                onDismissRequest = { semesterExpanded = false }
+                            ) {
+                                currentCourseSemesters.forEach { sem ->
+                                    DropdownMenuItem(
+                                        text = { Text(text = sem, fontFamily = AppFontFamily) },
+                                        onClick = {
+                                            semester = sem
+                                            semesterExpanded = false
+                                        }
                                     )
                                 }
                             }
@@ -469,7 +582,7 @@ fun RegisterScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // ==========================================
-                    // BIOMETRIC FACIAL RECOGNITION ENROLLMENT CARD
+                    // REAL BIOMETRIC FACIAL RECOGNITION ENROLLMENT CARD
                     // ==========================================
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -491,23 +604,36 @@ fun RegisterScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (faceEnrolled) Color(0xFFDCFCE7) else Color(0xFFEEF2FF)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painter = painterResource(
-                                            id = if (faceEnrolled) R.drawable.ic_check_circle else R.drawable.ic_face_recognition
-                                        ),
-                                        contentDescription = "Facial Recognition",
-                                        tint = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary,
-                                        modifier = Modifier.size(24.dp)
+                                // Real photo preview if captured, otherwise icon
+                                if (capturedFaceBitmap != null) {
+                                    Image(
+                                        bitmap = capturedFaceBitmap!!.asImageBitmap(),
+                                        contentDescription = "Real Captured Face",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .clip(CircleShape)
+                                            .border(2.dp, Color(0xFF16A34A), CircleShape)
                                     )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (faceEnrolled) Color(0xFFDCFCE7) else Color(0xFFEEF2FF)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (faceEnrolled) R.drawable.ic_check_circle else R.drawable.ic_face_recognition
+                                            ),
+                                            contentDescription = "Facial Recognition",
+                                            tint = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -529,7 +655,7 @@ fun RegisterScreen(
                                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
                                             Text(
-                                                text = if (faceEnrolled) "Enrolled" else "Mandatory",
+                                                text = if (faceEnrolled) "Face Captured" else "Mandatory",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (faceEnrolled) Color(0xFF15803D) else Color(0xFFB45309)
@@ -539,9 +665,9 @@ fun RegisterScreen(
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = if (faceEnrolled)
-                                            "Face biometric enrolled for Admin ID verification & lab attendance."
+                                            faceDetectionMsg ?: "Real face landmarks enrolled for Admin verification."
                                         else
-                                            "Admin verifies your photo before approving. Required for attendance.",
+                                            "Capture real front camera face. Admin will inspect photo before approving.",
                                         fontSize = 11.5.sp,
                                         fontFamily = AppFontFamily,
                                         color = MmyrvTextMuted,
@@ -550,34 +676,62 @@ fun RegisterScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                            OutlinedButton(
-                                onClick = { showFaceScanModal = true },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(38.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
-                                ),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
-                                )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_face_recognition),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = if (faceEnrolled) "Re-Scan Biometric Face" else "Scan & Enroll Face ID Now",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontFamily = AppFontFamily
-                                )
+                                // Primary Action: Open Device Camera
+                                Button(
+                                    onClick = {
+                                        try {
+                                            takePictureLauncher.launch(null)
+                                        } catch (e: Exception) {
+                                            showFaceScanModal = true
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .height(38.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
+                                    )
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_face_recognition),
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (faceEnrolled) "Retake Real Photo" else "Open Camera & Capture Face",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = AppFontFamily,
+                                        color = Color.White
+                                    )
+                                }
+
+                                // Secondary Action: Guided Scanner
+                                OutlinedButton(
+                                    onClick = { showFaceScanModal = true },
+                                    modifier = Modifier
+                                        .weight(0.8f)
+                                        .height(38.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                ) {
+                                    Text(
+                                        text = "Scan Mode",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = AppFontFamily,
+                                        color = MmyrvTextDark
+                                    )
+                                }
                             }
                         }
                     }
@@ -710,7 +864,7 @@ fun RegisterScreen(
                                 return@Button
                             }
                             if (selectedRole == UserRole.STUDENT && !faceEnrolled) {
-                                localValidationMsg = "Facial Biometric registration is required. Please click 'Scan & Enroll Face ID Now' above."
+                                localValidationMsg = "Real Face Biometric registration is required. Please capture your photo above."
                                 return@Button
                             }
                             if (!agreeTerms) {
@@ -727,7 +881,8 @@ fun RegisterScreen(
                                 programme,
                                 semester,
                                 phone.ifBlank { "+91 98765 43210" },
-                                faceEnrolled
+                                faceEnrolled,
+                                facePhotoBase64
                             )
                         },
                         modifier = Modifier
@@ -796,7 +951,7 @@ fun RegisterScreen(
         }
     }
 
-    // Modal Dialog for Facial Biometric Registration
+    // Modal Dialog for Facial Biometric Registration (Guided Landmark Scan)
     if (showFaceScanModal) {
         FaceEnrollmentModal(
             studentName = fullName.ifBlank { "Student" },
@@ -880,7 +1035,6 @@ private fun FaceEnrollmentModal(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Face silhouette placeholder
                     Icon(
                         painter = painterResource(id = R.drawable.ic_face_recognition),
                         contentDescription = "Face Frame",
@@ -888,7 +1042,6 @@ private fun FaceEnrollmentModal(
                         modifier = Modifier.size(96.dp)
                     )
 
-                    // Animated Laser Scanning Line
                     if (isScanning && !scanCompleted) {
                         Box(
                             modifier = Modifier
@@ -909,7 +1062,6 @@ private fun FaceEnrollmentModal(
                         )
                     }
 
-                    // Success Overlay
                     if (scanCompleted) {
                         Box(
                             modifier = Modifier

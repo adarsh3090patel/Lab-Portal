@@ -144,7 +144,7 @@ fun MainAppNavigation() {
             RegisterScreen(
                 isLoading = isLoading,
                 errorMessage = registerError,
-                onRegisterClick = { name, email, rollNo, role, password, programme, semester, phone, faceEnrolled ->
+                onRegisterClick = { name, email, rollNo, role, password, programme, semester, phone, faceEnrolled, facePhotoUrl ->
                     val cleanName = name.trim()
                     val cleanEmail = email.trim().lowercase()
                     val cleanRoll = rollNo.trim()
@@ -171,7 +171,8 @@ fun MainAppNavigation() {
                                     programme = programme,
                                     semester = semester,
                                     phone = phone,
-                                    faceEnrolled = faceEnrolled
+                                    faceEnrolled = faceEnrolled,
+                                    facePhotoUrl = facePhotoUrl
                                 )
                             )
 

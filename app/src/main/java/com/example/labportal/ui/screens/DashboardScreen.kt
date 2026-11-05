@@ -75,6 +75,7 @@ fun DashboardScreen(
     var showFaceScanDialog by remember { mutableStateOf(false) }
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showAdminApprovalsPage by remember { mutableStateOf(false) }
+    var showAdminCoursesPage by remember { mutableStateOf(false) }
 
     val isAdmin = user.role.equals("Admin", ignoreCase = true)
 
@@ -82,6 +83,14 @@ fun DashboardScreen(
     if (showAdminApprovalsPage && isAdmin) {
         AdminStudentApprovalsScreen(
             onBackClick = { showAdminApprovalsPage = false }
+        )
+        return
+    }
+
+    // Admin Courses & Programmes Fullscreen View
+    if (showAdminCoursesPage && isAdmin) {
+        AdminCoursesScreen(
+            onBackClick = { showAdminCoursesPage = false }
         )
         return
     }
@@ -458,6 +467,19 @@ fun DashboardScreen(
                         ) {
                             coroutineScope.launch { drawerState.close() }
                             showAdminApprovalsPage = true
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        DrawerMenuItem(
+                            title = "Courses & Programmes",
+                            subtitle = "Manage degrees & semesters",
+                            iconRes = R.drawable.ic_school,
+                            badgeText = "NEW",
+                            isSelected = showAdminCoursesPage
+                        ) {
+                            coroutineScope.launch { drawerState.close() }
+                            showAdminCoursesPage = true
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))

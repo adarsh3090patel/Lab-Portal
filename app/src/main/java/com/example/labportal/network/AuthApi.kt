@@ -70,6 +70,19 @@ data class SimpleActionResponse(
     val success: Boolean = true
 )
 
+data class CourseDto(
+    val id: String,
+    val name: String,
+    val code: String,
+    val semesters: List<String>
+)
+
+data class CourseCreateDto(
+    val name: String,
+    val code: String,
+    val semesters: List<String>
+)
+
 data class HealthResponse(
     val status: String,
     val database: String
@@ -90,6 +103,15 @@ interface AuthApiService {
 
     @POST("api/admin/reject-student/{id}")
     suspend fun rejectStudent(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+
+    @GET("api/courses")
+    suspend fun getCourses(): Response<List<CourseDto>>
+
+    @POST("api/admin/courses")
+    suspend fun addCourse(@Body body: CourseCreateDto): Response<SimpleActionResponse>
+
+    @retrofit2.http.DELETE("api/admin/courses/{id}")
+    suspend fun deleteCourse(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
 
     @GET("health")
     suspend fun healthCheck(): Response<HealthResponse>
