@@ -66,3 +66,4 @@ https://labportal-backend.vercel.app
 👉 **Aapko bas ye Vercel wala link copy karke mujhe chat me bhejna hai!**
 
 Mai ye link direct Android app ke andar fix kar dunga, jiske baad aapko phone me koi setting ya IP nahi chhedni padegi — app seedha 5G/Wi-Fi par hamesha ke liye connect ho jayega!
+
