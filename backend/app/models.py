@@ -22,6 +22,21 @@ class UserLoginRequest(BaseModel):
     email: str
     password: str
 
+class ProfileUpdateRequest(BaseModel):
+    fullName: Optional[str] = None
+    phone: Optional[str] = None
+    department: Optional[str] = None
+    programme: Optional[str] = None
+    semester: Optional[str] = None
+    academicYear: Optional[str] = None
+    collegeName: Optional[str] = "Maharishi Mahesh Yogi Ramayan University Ayodhya"
+    dob: Optional[str] = None
+    bloodGroup: Optional[str] = None
+    permanentAddress: Optional[str] = None
+    guardianName: Optional[str] = None
+    guardianPhone: Optional[str] = None
+    facePhotoUrl: Optional[str] = None
+
 class UserResponse(BaseModel):
     id: str
     fullName: str

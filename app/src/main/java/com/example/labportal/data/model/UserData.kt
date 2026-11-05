@@ -13,5 +13,13 @@ data class UserData(
     val academicYear: String = "2024 - 2028",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = "",
-    val profileCompletion: Int = 80
+    val profileCompletion: Int = 80,
+    val id: String = "",
+    val collegeName: String = "Maharishi Mahesh Yogi Ramayan University Ayodhya",
+    val enrollmentNo: String = rollNo,
+    val dob: String = "",
+    val bloodGroup: String = "",
+    val permanentAddress: String = "",
+    val guardianName: String = "",
+    val guardianPhone: String = ""
 )

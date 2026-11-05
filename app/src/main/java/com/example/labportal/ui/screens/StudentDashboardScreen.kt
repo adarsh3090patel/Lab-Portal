@@ -58,11 +58,11 @@ import com.example.labportal.ui.theme.MmyrvTextMuted
 
 @Composable
 fun StudentDashboardContent(
-    user: UserData
+    user: UserData,
+    onOpenProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var completionPercentage by remember { mutableStateOf(user.profileCompletion) }
-    var showCompletionModal by remember { mutableStateOf(false) }
+    val completionPercentage = user.profileCompletion
 
     Column(
         modifier = Modifier
@@ -77,13 +77,16 @@ fun StudentDashboardContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Complete Profile Shape / Progress Card
-        ProfileCompletionSection(
-            user = user,
-            completionPercentage = completionPercentage,
-            onCompleteClick = { showCompletionModal = true }
-        )
+        // RULE: Visible ONLY until 100% complete. Once 100%, it completely disappears ("gayab ho jaye")!
+        if (completionPercentage < 100) {
+            ProfileCompletionSection(
+                user = user,
+                completionPercentage = completionPercentage,
+                onCompleteClick = onOpenProfile
+            )
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         // Welcome Card
         Card(
@@ -254,19 +257,6 @@ fun StudentDashboardContent(
         )
 
         Spacer(modifier = Modifier.height(20.dp))
-    }
-
-    // Modal to Complete Profile to 100%
-    if (showCompletionModal) {
-        CompleteProfileModal(
-            currentPhone = user.phone,
-            onDismiss = { showCompletionModal = false },
-            onSave = {
-                completionPercentage = 100
-                showCompletionModal = false
-                Toast.makeText(context, "Profile is now 100% Complete! Verified Student Badge Unlocked.", Toast.LENGTH_LONG).show()
-            }
-        )
     }
 }
 

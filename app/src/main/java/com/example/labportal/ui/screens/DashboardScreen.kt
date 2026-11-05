@@ -78,6 +78,8 @@ fun DashboardScreen(
     var showAdminCoursesPage by remember { mutableStateOf(false) }
 
     val isAdmin = user.role.equals("Admin", ignoreCase = true)
+    var currentUser by remember { mutableStateOf(user) }
+    var showStudentProfilePage by remember { mutableStateOf(false) }
 
     // Admin Student Approvals Fullscreen View
     if (showAdminApprovalsPage && isAdmin) {
@@ -95,10 +97,22 @@ fun DashboardScreen(
         return
     }
 
+    // Student Profile Fullscreen View (Matches uploaded UI mockup)
+    if (showStudentProfilePage && !isAdmin) {
+        StudentProfileScreen(
+            user = currentUser,
+            onBackClick = { showStudentProfilePage = false },
+            onProfileUpdated = { updatedUser ->
+                currentUser = updatedUser
+            }
+        )
+        return
+    }
+
     // Student Facial Recognition Dialog
     if (showFaceScanDialog) {
         FaceScanDialog(
-            user = user,
+            user = currentUser,
             onDismiss = { showFaceScanDialog = false }
         )
     }
@@ -335,6 +349,12 @@ fun DashboardScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .background(Color(0xFFF8FAFC))
                             .border(BorderStroke(1.dp, MmyrvBorder), RoundedCornerShape(14.dp))
+                            .clickable {
+                                if (!isAdmin) {
+                                    coroutineScope.launch { drawerState.close() }
+                                    showStudentProfilePage = true
+                                }
+                            }
                             .padding(12.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -355,7 +375,7 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = user.fullName,
+                                    text = currentUser.fullName,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.5.sp,
                                     color = MmyrvTextDark,
@@ -371,7 +391,7 @@ fun DashboardScreen(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "${user.role.uppercase()} • ${user.rollNo}",
+                                        text = "${currentUser.role.uppercase()} • ${currentUser.rollNo}",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (isAdmin) Color(0xFFD97706) else MmyrvPrimary,
@@ -495,6 +515,18 @@ fun DashboardScreen(
                         }
                     } else {
                         DrawerMenuItem(
+                            title = "My Academic Profile",
+                            subtitle = "Official student record & biometrics",
+                            iconRes = R.drawable.ic_person,
+                            isSelected = showStudentProfilePage
+                        ) {
+                            coroutineScope.launch { drawerState.close() }
+                            showStudentProfilePage = true
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        DrawerMenuItem(
                             title = "Facial Attendance",
                             subtitle = "Biometric camera scan",
                             iconRes = R.drawable.ic_face_recognition,
@@ -569,7 +601,13 @@ fun DashboardScreen(
                 PortalTopBar(
                     onMenuClick = { coroutineScope.launch { drawerState.open() } },
                     onNotificationClick = { showNotificationDialog = true },
-                    onProfileClick = { showProfileDialog = true },
+                    onProfileClick = {
+                        if (isAdmin) {
+                            showProfileDialog = true
+                        } else {
+                            showStudentProfilePage = true
+                        }
+                    },
                     hasUnreadNotifications = true
                 )
             },
@@ -599,23 +637,26 @@ fun DashboardScreen(
                 when (selectedTab) {
                     PortalTab.HOME -> {
                         if (isAdmin) {
-                            AdminDashboardContent(user = user)
+                            AdminDashboardContent(user = currentUser)
                         } else {
-                            StudentDashboardContent(user = user)
+                            StudentDashboardContent(
+                                user = currentUser,
+                                onOpenProfile = { showStudentProfilePage = true }
+                            )
                         }
                     }
                     PortalTab.SECONDARY -> {
                         if (isAdmin) {
-                            TodaysLabContent(user = user)
+                            TodaysLabContent(user = currentUser)
                         } else {
-                            AttendanceContent(user = user)
+                            AttendanceContent(user = currentUser)
                         }
                     }
                     PortalTab.RESOURCES -> {
-                        ResourcesContent(user = user)
+                        ResourcesContent(user = currentUser)
                     }
                     PortalTab.SETTINGS -> {
-                        SettingsContent(user = user, onLogoutClick = onLogoutClick)
+                        SettingsContent(user = currentUser, onLogoutClick = onLogoutClick)
                     }
                 }
             }

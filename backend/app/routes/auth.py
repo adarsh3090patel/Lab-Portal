@@ -1,7 +1,8 @@
 import hashlib
 from fastapi import APIRouter, HTTPException, status
+from bson import ObjectId
 from app.database import get_database
-from app.models import UserRegisterRequest, UserLoginRequest
+from app.models import UserRegisterRequest, UserLoginRequest, ProfileUpdateRequest
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -102,12 +103,86 @@ def login(credentials: UserLoginRequest):
             "email": user["email"],
             "rollNo": user.get("rollNo", ""),
             "role": user.get("role", "Student"),
+            "collegeName": user.get("collegeName", "Maharishi Mahesh Yogi Ramayan University Ayodhya"),
             "programme": user.get("programme", "B.Sc. (Computer Science)"),
             "semester": user.get("semester", "Semester V"),
+            "department": user.get("department", "Computer Science & Engineering"),
+            "academicYear": user.get("academicYear", "2024 - 2028"),
             "phone": user.get("phone", "+91 98765 43210"),
+            "dob": user.get("dob", ""),
+            "bloodGroup": user.get("bloodGroup", ""),
+            "permanentAddress": user.get("permanentAddress", ""),
+            "guardianName": user.get("guardianName", ""),
+            "guardianPhone": user.get("guardianPhone", ""),
             "faceEnrolled": user.get("faceEnrolled", True),
             "facePhotoUrl": user.get("facePhotoUrl", ""),
             "profileCompletion": user.get("profileCompletion", 85)
+        }
+    }
+
+@router.put("/profile/{user_id}")
+def update_profile(user_id: str, req: ProfileUpdateRequest):
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    update_fields = {}
+    if req.fullName is not None: update_fields["fullName"] = req.fullName
+    if req.phone is not None: update_fields["phone"] = req.phone
+    if req.department is not None: update_fields["department"] = req.department
+    if req.programme is not None: update_fields["programme"] = req.programme
+    if req.semester is not None: update_fields["semester"] = req.semester
+    if req.academicYear is not None: update_fields["academicYear"] = req.academicYear
+    if req.collegeName is not None: update_fields["collegeName"] = req.collegeName
+    if req.dob is not None: update_fields["dob"] = req.dob
+    if req.bloodGroup is not None: update_fields["bloodGroup"] = req.bloodGroup
+    if req.permanentAddress is not None: update_fields["permanentAddress"] = req.permanentAddress
+    if req.guardianName is not None: update_fields["guardianName"] = req.guardianName
+    if req.guardianPhone is not None: update_fields["guardianPhone"] = req.guardianPhone
+    if req.facePhotoUrl is not None and req.facePhotoUrl.strip():
+        update_fields["facePhotoUrl"] = req.facePhotoUrl
+        update_fields["faceEnrolled"] = True
+
+    # If personal details like dob, bloodGroup, permanentAddress are filled, profile hits 100%!
+    is_complete = bool(
+        (req.dob or "").strip() and
+        (req.bloodGroup or "").strip() and
+        (req.permanentAddress or "").strip()
+    )
+    update_fields["profileCompletion"] = 100 if is_complete else 85
+
+    res = users_col.update_one({"_id": obj_id}, {"$set": update_fields})
+    updated_user = users_col.find_one({"_id": obj_id})
+    if not updated_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    return {
+        "message": "Profile updated successfully",
+        "user": {
+            "id": str(updated_user["_id"]),
+            "fullName": updated_user.get("fullName", ""),
+            "email": updated_user["email"],
+            "rollNo": updated_user.get("rollNo", ""),
+            "role": updated_user.get("role", "Student"),
+            "collegeName": updated_user.get("collegeName", "Maharishi Mahesh Yogi Ramayan University Ayodhya"),
+            "programme": updated_user.get("programme", "B.Sc. (Computer Science)"),
+            "semester": updated_user.get("semester", "Semester V"),
+            "department": updated_user.get("department", "Computer Science & Engineering"),
+            "academicYear": updated_user.get("academicYear", "2024 - 2028"),
+            "phone": updated_user.get("phone", "+91 98765 43210"),
+            "dob": updated_user.get("dob", ""),
+            "bloodGroup": updated_user.get("bloodGroup", ""),
+            "permanentAddress": updated_user.get("permanentAddress", ""),
+            "guardianName": updated_user.get("guardianName", ""),
+            "guardianPhone": updated_user.get("guardianPhone", ""),
+            "faceEnrolled": updated_user.get("faceEnrolled", True),
+            "facePhotoUrl": updated_user.get("facePhotoUrl", ""),
+            "profileCompletion": updated_user.get("profileCompletion", 100 if is_complete else 85)
         }
     }
 

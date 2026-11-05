@@ -41,7 +41,31 @@ data class UserDto(
     val phone: String = "+91 98765 43210",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = "",
-    val profileCompletion: Int = 80
+    val profileCompletion: Int = 80,
+    val collegeName: String = "Maharishi Mahesh Yogi Ramayan University Ayodhya",
+    val department: String = "Computer Science & Engineering",
+    val academicYear: String = "2024 - 2028",
+    val dob: String = "",
+    val bloodGroup: String = "",
+    val permanentAddress: String = "",
+    val guardianName: String = "",
+    val guardianPhone: String = ""
+)
+
+data class ProfileUpdateRequest(
+    val fullName: String? = null,
+    val phone: String? = null,
+    val department: String? = null,
+    val programme: String? = null,
+    val semester: String? = null,
+    val academicYear: String? = null,
+    val collegeName: String? = null,
+    val dob: String? = null,
+    val bloodGroup: String? = null,
+    val permanentAddress: String? = null,
+    val guardianName: String? = null,
+    val guardianPhone: String? = null,
+    val facePhotoUrl: String? = null
 )
 
 data class AuthResponse(
@@ -106,6 +130,12 @@ interface AuthApiService {
 
     @GET("api/courses")
     suspend fun getCourses(): Response<List<CourseDto>>
+
+    @retrofit2.http.PUT("api/auth/profile/{id}")
+    suspend fun updateProfile(
+        @retrofit2.http.Path("id") id: String,
+        @Body body: ProfileUpdateRequest
+    ): Response<AuthResponse>
 
     @POST("api/admin/courses")
     suspend fun addCourse(@Body body: CourseCreateDto): Response<SimpleActionResponse>

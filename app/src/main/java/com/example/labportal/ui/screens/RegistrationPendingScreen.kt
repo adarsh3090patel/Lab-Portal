@@ -92,17 +92,33 @@ fun RegistrationPendingScreen(
                     // Document Icon with Green Check Badge
                     Box(
                         modifier = Modifier
-                            .size(68.dp)
-                            .clip(RoundedCornerShape(18.dp))
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(20.dp))
                             .background(Color(0xFFDCFCE7)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_check_circle),
-                            contentDescription = "Success",
-                            tint = Color(0xFF10B981),
-                            modifier = Modifier.size(36.dp)
-                        )
+                        Box(contentAlignment = Alignment.BottomEnd) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_document),
+                                contentDescription = "Submitted",
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF10B981)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_check_circle),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -129,7 +145,7 @@ fun RegistrationPendingScreen(
 
                     Spacer(modifier = Modifier.height(22.dp))
 
-                    // Registration Details Table
+                    // Registration Details Table (Clean layout matching reference mockup)
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
@@ -151,12 +167,6 @@ fun RegistrationPendingScreen(
                             HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
 
                             DetailRow(iconRes = R.drawable.ic_badge, label = "Enrollment No.", value = rollNo)
-                            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
-
-                            DetailRow(iconRes = R.drawable.ic_phone, label = "Phone", value = phone)
-                            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
-
-                            DetailRow(iconRes = R.drawable.ic_face_recognition, label = "Face Biometric", value = "Enrolled")
                             HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
 
                             DetailRow(iconRes = R.drawable.ic_email, label = "Email", value = email)

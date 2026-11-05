@@ -106,7 +106,17 @@ fun MainAppNavigation() {
                                     semester = userDto.semester,
                                     faceEnrolled = userDto.faceEnrolled,
                                     facePhotoUrl = userDto.facePhotoUrl,
-                                    profileCompletion = userDto.profileCompletion
+                                    profileCompletion = userDto.profileCompletion,
+                                    id = userDto.id,
+                                    collegeName = userDto.collegeName,
+                                    department = userDto.department,
+                                    academicYear = userDto.academicYear,
+                                    dob = userDto.dob,
+                                    bloodGroup = userDto.bloodGroup,
+                                    permanentAddress = userDto.permanentAddress,
+                                    guardianName = userDto.guardianName,
+                                    guardianPhone = userDto.guardianPhone,
+                                    enrollmentNo = userDto.rollNo
                                 )
                                 Toast.makeText(context, "Welcome ${userDto.fullName} (${userDto.role})", Toast.LENGTH_SHORT).show()
                                 currentScreen = AppScreen.DASHBOARD
