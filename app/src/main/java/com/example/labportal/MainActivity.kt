@@ -105,6 +105,7 @@ fun MainAppNavigation() {
                                     programme = userDto.programme,
                                     semester = userDto.semester,
                                     faceEnrolled = userDto.faceEnrolled,
+                                    profilePhotoUrl = userDto.profilePhotoUrl,
                                     facePhotoUrl = userDto.facePhotoUrl,
                                     profileCompletion = userDto.profileCompletion,
                                     id = userDto.id,

@@ -38,6 +38,7 @@ def register(user_data: UserRegisterRequest):
         "programme": user_data.programme or "B.Sc. (Computer Science)",
         "semester": user_data.semester or "Semester V",
         "phone": user_data.phone or "+91 98765 43210",
+        "profilePhotoUrl": user_data.profilePhotoUrl or user_data.facePhotoUrl,
         "faceEnrolled": user_data.faceEnrolled,
         "facePhotoUrl": user_data.facePhotoUrl,
         "password": hash_password(user_data.password),
@@ -59,6 +60,7 @@ def register(user_data: UserRegisterRequest):
             "programme": user_data.programme or "B.Sc. (Computer Science)",
             "semester": user_data.semester or "Semester V",
             "phone": user_data.phone or "+91 98765 43210",
+            "profilePhotoUrl": user_data.profilePhotoUrl or user_data.facePhotoUrl,
             "faceEnrolled": user_data.faceEnrolled,
             "facePhotoUrl": user_data.facePhotoUrl,
             "profileCompletion": 85
@@ -114,6 +116,7 @@ def login(credentials: UserLoginRequest):
             "permanentAddress": user.get("permanentAddress", ""),
             "guardianName": user.get("guardianName", ""),
             "guardianPhone": user.get("guardianPhone", ""),
+            "profilePhotoUrl": user.get("profilePhotoUrl", user.get("facePhotoUrl", "")),
             "faceEnrolled": user.get("faceEnrolled", True),
             "facePhotoUrl": user.get("facePhotoUrl", ""),
             "profileCompletion": user.get("profileCompletion", 85)
@@ -144,6 +147,8 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
     if req.permanentAddress is not None: update_fields["permanentAddress"] = req.permanentAddress
     if req.guardianName is not None: update_fields["guardianName"] = req.guardianName
     if req.guardianPhone is not None: update_fields["guardianPhone"] = req.guardianPhone
+    if req.profilePhotoUrl is not None and req.profilePhotoUrl.strip():
+        update_fields["profilePhotoUrl"] = req.profilePhotoUrl
     if req.facePhotoUrl is not None and req.facePhotoUrl.strip():
         update_fields["facePhotoUrl"] = req.facePhotoUrl
         update_fields["faceEnrolled"] = True
@@ -180,6 +185,7 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
             "permanentAddress": updated_user.get("permanentAddress", ""),
             "guardianName": updated_user.get("guardianName", ""),
             "guardianPhone": updated_user.get("guardianPhone", ""),
+            "profilePhotoUrl": updated_user.get("profilePhotoUrl", updated_user.get("facePhotoUrl", "")),
             "faceEnrolled": updated_user.get("faceEnrolled", True),
             "facePhotoUrl": updated_user.get("facePhotoUrl", ""),
             "profileCompletion": updated_user.get("profileCompletion", 100 if is_complete else 85)

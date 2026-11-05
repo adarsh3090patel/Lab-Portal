@@ -26,6 +26,7 @@ data class RegisterRequest(
     val programme: String = "B.Sc. (Computer Science)",
     val semester: String = "Semester V",
     val phone: String = "+91 98765 43210",
+    val profilePhotoUrl: String = "",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = ""
 )
@@ -39,6 +40,7 @@ data class UserDto(
     val programme: String = "B.Sc. (Computer Science)",
     val semester: String = "Semester V",
     val phone: String = "+91 98765 43210",
+    val profilePhotoUrl: String = "",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = "",
     val profileCompletion: Int = 80,
@@ -65,6 +67,7 @@ data class ProfileUpdateRequest(
     val permanentAddress: String? = null,
     val guardianName: String? = null,
     val guardianPhone: String? = null,
+    val profilePhotoUrl: String? = null,
     val facePhotoUrl: String? = null
 )
 
@@ -83,6 +86,7 @@ data class StudentApprovalDto(
     val programme: String = "B.Sc. (Computer Science)",
     val semester: String = "Semester V",
     val phone: String = "+91 98765 43210",
+    val profilePhotoUrl: String = "",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = "",
     @SerializedName("isApproved") val isApproved: Boolean = false,

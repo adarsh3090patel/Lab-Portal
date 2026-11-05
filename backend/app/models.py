@@ -10,6 +10,7 @@ class UserRegisterRequest(BaseModel):
     programme: Optional[str] = "B.Sc. (Computer Science)"
     semester: Optional[str] = "Semester V"
     phone: Optional[str] = "+91 98765 43210"
+    profilePhotoUrl: Optional[str] = ""
     faceEnrolled: Optional[bool] = True
     facePhotoUrl: Optional[str] = ""
 
@@ -35,6 +36,7 @@ class ProfileUpdateRequest(BaseModel):
     permanentAddress: Optional[str] = None
     guardianName: Optional[str] = None
     guardianPhone: Optional[str] = None
+    profilePhotoUrl: Optional[str] = None
     facePhotoUrl: Optional[str] = None
 
 class UserResponse(BaseModel):
@@ -46,5 +48,7 @@ class UserResponse(BaseModel):
     programme: Optional[str] = "B.Sc. (Computer Science)"
     semester: Optional[str] = "Semester V"
     phone: Optional[str] = "+91 98765 43210"
+    profilePhotoUrl: Optional[str] = ""
     faceEnrolled: Optional[bool] = True
+    facePhotoUrl: Optional[str] = ""
     profileCompletion: Optional[int] = 80

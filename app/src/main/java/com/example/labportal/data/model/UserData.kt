@@ -12,6 +12,7 @@ data class UserData(
     val batch: String = "Batch A-1 (Lab Group 2)",
     val academicYear: String = "2024 - 2028",
     val faceEnrolled: Boolean = true,
+    val profilePhotoUrl: String = "",
     val facePhotoUrl: String = "",
     val profileCompletion: Int = 80,
     val id: String = "",

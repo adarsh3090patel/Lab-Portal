@@ -1,7 +1,10 @@
 package com.example.labportal.ui.screens
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -80,10 +83,17 @@ fun StudentProfileScreen(
     var isEditMode by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var showLiveFaceScanner by remember { mutableStateOf(false) }
-    var showFullPhotoDialog by remember { mutableStateOf(false) }
+    var showFullBiometricDialog by remember { mutableStateOf(false) }
+    var showAvatarPickerOptions by remember { mutableStateOf(false) }
 
-    // Editable form state initialized from current user
-    var currentPhotoBase64 by remember { mutableStateOf(user.facePhotoUrl) }
+    // Separate State: 1. Display Profile Avatar & 2. Official Biometric Face Template
+    var currentProfilePhoto by remember {
+        mutableStateOf(user.profilePhotoUrl.ifBlank { user.facePhotoUrl })
+    }
+    var currentBiometricPhoto by remember {
+        mutableStateOf(user.facePhotoUrl)
+    }
+
     var phoneInput by remember { mutableStateOf(user.phone) }
     var dobInput by remember { mutableStateOf(user.dob) }
     var bloodGroupInput by remember { mutableStateOf(user.bloodGroup) }
@@ -91,14 +101,21 @@ fun StudentProfileScreen(
     var guardianNameInput by remember { mutableStateOf(user.guardianName) }
     var guardianPhoneInput by remember { mutableStateOf(user.guardianPhone) }
 
-    // Face bitmap for preview
-    val faceImageBitmap = remember(currentPhotoBase64) {
-        FaceDetectionHelper.base64ToImageBitmap(currentPhotoBase64)
+    // Bitmaps for rendering
+    val profileImageBitmap = remember(currentProfilePhoto) {
+        FaceDetectionHelper.base64ToImageBitmap(currentProfilePhoto)
+    }
+    val biometricImageBitmap = remember(currentBiometricPhoto) {
+        FaceDetectionHelper.base64ToImageBitmap(currentBiometricPhoto)
     }
 
-    // Function to persist updates to MongoDB via backend
-    fun saveProfileToDatabase(newPhoto: String? = null) {
-        val targetPhoto = newPhoto ?: currentPhotoBase64
+    // Persist updates to MongoDB via backend API
+    fun saveProfileToDatabase(
+        newProfilePhoto: String? = null,
+        newBiometricPhoto: String? = null
+    ) {
+        val targetProfile = newProfilePhoto ?: currentProfilePhoto
+        val targetBiometric = newBiometricPhoto ?: currentBiometricPhoto
         val userId = if (user.id.isNotBlank()) user.id else user.rollNo
 
         isSaving = true
@@ -111,7 +128,8 @@ fun StudentProfileScreen(
                     permanentAddress = addressInput.trim(),
                     guardianName = guardianNameInput.trim(),
                     guardianPhone = guardianPhoneInput.trim(),
-                    facePhotoUrl = if (targetPhoto.isNotBlank()) targetPhoto else null
+                    profilePhotoUrl = if (targetProfile.isNotBlank()) targetProfile else null,
+                    facePhotoUrl = if (targetBiometric.isNotBlank()) targetBiometric else null
                 )
 
                 val response = NetworkClient.apiService.updateProfile(userId, req)
@@ -126,26 +144,27 @@ fun StudentProfileScreen(
                         permanentAddress = updatedDto.permanentAddress,
                         guardianName = updatedDto.guardianName,
                         guardianPhone = updatedDto.guardianPhone,
+                        profilePhotoUrl = updatedDto.profilePhotoUrl,
                         facePhotoUrl = updatedDto.facePhotoUrl,
                         profileCompletion = updatedDto.profileCompletion
                     )
-                    currentPhotoBase64 = updatedDto.facePhotoUrl
+                    currentProfilePhoto = updatedDto.profilePhotoUrl
+                    currentBiometricPhoto = updatedDto.facePhotoUrl
                     onProfileUpdated(updatedUser)
                     isEditMode = false
                     Toast.makeText(
                         context,
                         if (updatedDto.profileCompletion >= 100)
-                            "Profile 100% complete! Database updated successfully."
+                            "Profile 100% complete! Changes saved to database."
                         else
                             "Profile updated in database.",
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
-                    Toast.makeText(context, "Failed to save profile to database", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed to update profile in database", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 isSaving = false
-                // Local fallback update so user isn't blocked if offline
                 val isComplete = dobInput.isNotBlank() && bloodGroupInput.isNotBlank() && addressInput.isNotBlank()
                 val updatedUser = user.copy(
                     phone = phoneInput.trim(),
@@ -154,13 +173,43 @@ fun StudentProfileScreen(
                     permanentAddress = addressInput.trim(),
                     guardianName = guardianNameInput.trim(),
                     guardianPhone = guardianPhoneInput.trim(),
-                    facePhotoUrl = targetPhoto,
+                    profilePhotoUrl = targetProfile,
+                    facePhotoUrl = targetBiometric,
                     profileCompletion = if (isComplete) 100 else 85
                 )
                 onProfileUpdated(updatedUser)
                 isEditMode = false
-                Toast.makeText(context, "Saved locally (Offline Mode)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Saved offline.", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    // Avatar pickers (Separate from facial biometric scanner)
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                if (bitmap != null) {
+                    val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+                    currentProfilePhoto = base64
+                    saveProfileToDatabase(newProfilePhoto = base64)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not load image", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val cameraPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+            currentProfilePhoto = base64
+            saveProfileToDatabase(newProfilePhoto = base64)
         }
     }
 
@@ -175,13 +224,12 @@ fun StudentProfileScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 18.dp)
         ) {
-            // 1. Top Bar: Back Button, Title/Subtitle, Edit Profile Button (Matches uploaded UI)
+            // 1. Top Bar: Back Button, Title/Subtitle, Edit Profile Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Back Button
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
@@ -200,7 +248,6 @@ fun StudentProfileScreen(
                     }
                 }
 
-                // Title & Subtitle
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -221,7 +268,6 @@ fun StudentProfileScreen(
                     )
                 }
 
-                // Edit Profile / Save Pill Button
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = if (isEditMode) MmyrvPrimary else Color(0xFFEEF2FF),
@@ -274,7 +320,7 @@ fun StudentProfileScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // 2. Student Hero Card (Matches uploaded mockup image exactly)
+            // 2. Student Hero Card: Profile Photo Avatar + Information
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -288,7 +334,7 @@ fun StudentProfileScreen(
                         .padding(horizontal = 20.dp, vertical = 22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Centered Circular Avatar with Camera Badge
+                    // Profile Photo Avatar with Change Badge
                     Box(
                         modifier = Modifier.size(108.dp),
                         contentAlignment = Alignment.BottomEnd
@@ -301,10 +347,10 @@ fun StudentProfileScreen(
                                 .border(BorderStroke(3.dp, Color(0xFFE0E7FF)), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (faceImageBitmap != null) {
+                            if (profileImageBitmap != null) {
                                 Image(
-                                    bitmap = faceImageBitmap,
-                                    contentDescription = "Student Biometric Photo",
+                                    bitmap = profileImageBitmap,
+                                    contentDescription = "Profile Photo",
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
                                 )
@@ -318,19 +364,19 @@ fun StudentProfileScreen(
                             }
                         }
 
-                        // Purple Camera Badge Button
+                        // Camera Badge to change Profile Photo
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
                                 .background(MmyrvPrimary)
                                 .border(BorderStroke(2.dp, Color.White), CircleShape)
-                                .clickable { showLiveFaceScanner = true },
+                                .clickable { showAvatarPickerOptions = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_camera),
-                                contentDescription = "Change Biometric Photo",
+                                contentDescription = "Change Profile Picture",
                                 tint = Color.White,
                                 modifier = Modifier.size(17.dp)
                             )
@@ -339,7 +385,6 @@ fun StudentProfileScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Student Full Name
                     Text(
                         text = user.fullName,
                         fontSize = 22.sp,
@@ -351,7 +396,6 @@ fun StudentProfileScreen(
 
                     Spacer(modifier = Modifier.height(3.dp))
 
-                    // Degree & Semester Subtitle
                     Text(
                         text = "${user.programme} • ${user.semester}",
                         fontSize = 13.5.sp,
@@ -362,7 +406,7 @@ fun StudentProfileScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Active Student Pill Badge
+                    // Active Student Badge
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = Color(0xFFECFDF5),
@@ -393,14 +437,13 @@ fun StudentProfileScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Dual Action Buttons: "View Photo" & "Change Photo"
+                    // Dual Buttons: Change Profile Photo & Open Biometric Scan
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // View Photo Button
                         OutlinedButton(
-                            onClick = { showFullPhotoDialog = true },
+                            onClick = { showAvatarPickerOptions = true },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp),
@@ -409,22 +452,21 @@ fun StudentProfileScreen(
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White)
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_visibility),
-                                contentDescription = "View Photo",
+                                painter = painterResource(id = R.drawable.ic_camera),
+                                contentDescription = null,
                                 tint = MmyrvPrimary,
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "View Photo",
-                                fontSize = 13.sp,
+                                text = "Change Avatar",
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
                                 color = MmyrvPrimary
                             )
                         }
 
-                        // Change Photo Button (triggers live camera scanner)
                         Button(
                             onClick = { showLiveFaceScanner = true },
                             modifier = Modifier
@@ -434,15 +476,15 @@ fun StudentProfileScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary)
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_camera),
-                                contentDescription = "Change Photo",
+                                painter = painterResource(id = R.drawable.ic_face_recognition),
+                                contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Change Photo",
-                                fontSize = 13.sp,
+                                text = "Screen-Lock Face",
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
                                 color = Color.White
@@ -454,7 +496,171 @@ fun StudentProfileScreen(
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // 3. Section: Academic Information
+            // 3. Dedicated Screen-Lock Biometric Facial Template Section (Separate from profile avatar)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_face_recognition),
+                    contentDescription = null,
+                    tint = MmyrvTextDark,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Screen-Lock Facial Biometric Record",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = AppFontFamily,
+                    color = MmyrvTextDark
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, MmyrvBorder)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Biometric Template Thumbnail
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF0F172A))
+                                .border(1.5.dp, Color(0xFF10B981), RoundedCornerShape(14.dp))
+                                .clickable {
+                                    if (biometricImageBitmap != null) {
+                                        showFullBiometricDialog = true
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (biometricImageBitmap != null) {
+                                Image(
+                                    bitmap = biometricImageBitmap,
+                                    contentDescription = "Biometric Face Template",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_face_recognition),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "3D Landmark Face Key",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
+                                    color = MmyrvTextDark
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFDCFCE7)
+                                ) {
+                                    Text(
+                                        text = "STRICT LOCK",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF15803D),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "Enforced 0° straight gaze, eye-open liveness check & multi-point facial geometric template.",
+                                fontSize = 11.5.sp,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextMuted,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showFullBiometricDialog = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_visibility),
+                                contentDescription = null,
+                                tint = MmyrvTextDark,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "View Biometric",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextDark
+                            )
+                        }
+
+                        Button(
+                            onClick = { showLiveFaceScanner = true },
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .height(40.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_camera),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Re-Enroll Lock Face",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            // 4. Section: Academic Information
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
@@ -540,7 +746,7 @@ fun StudentProfileScreen(
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // 4. Section: Contact & Personal Details
+            // 5. Section: Contact & Personal Details
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
@@ -574,7 +780,6 @@ fun StudentProfileScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    // Email (Official university email, read-only)
                     ProfileRecordRow(
                         iconRes = R.drawable.ic_email,
                         label = "Email Address",
@@ -582,7 +787,6 @@ fun StudentProfileScreen(
                     )
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
 
-                    // Phone Number
                     if (isEditMode) {
                         EditableRecordField(
                             iconRes = R.drawable.ic_phone,
@@ -600,7 +804,6 @@ fun StudentProfileScreen(
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
 
-                    // Date of Birth
                     if (isEditMode) {
                         EditableRecordField(
                             iconRes = R.drawable.ic_calendar_today,
@@ -618,7 +821,6 @@ fun StudentProfileScreen(
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
 
-                    // Blood Group
                     if (isEditMode) {
                         EditableRecordField(
                             iconRes = R.drawable.ic_water_drop,
@@ -636,7 +838,6 @@ fun StudentProfileScreen(
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
 
-                    // Permanent Address
                     if (isEditMode) {
                         EditableRecordField(
                             iconRes = R.drawable.ic_location,
@@ -654,7 +855,6 @@ fun StudentProfileScreen(
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
 
-                    // Guardian Details
                     if (isEditMode) {
                         EditableRecordField(
                             iconRes = R.drawable.ic_group,
@@ -684,7 +884,6 @@ fun StudentProfileScreen(
                 }
             }
 
-            // Save Button when in edit mode
             if (isEditMode) {
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -722,9 +921,70 @@ fun StudentProfileScreen(
             Spacer(modifier = Modifier.height(28.dp))
         }
 
-        // 5. Full-Screen High-Resolution Photo Viewer Modal
-        if (showFullPhotoDialog) {
-            Dialog(onDismissRequest = { showFullPhotoDialog = false }) {
+        // 6. Avatar Selection Dialog (Gallery / Camera)
+        if (showAvatarPickerOptions) {
+            AlertDialog(
+                onDismissRequest = { showAvatarPickerOptions = false },
+                title = {
+                    Text(
+                        text = "Change Profile Picture",
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = AppFontFamily,
+                        fontSize = 17.sp,
+                        color = MmyrvTextDark
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "Your profile picture is displayed on your student ID card and dashboard. It is separate from your biometric facial template.",
+                            fontSize = 12.sp,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvTextMuted
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                showAvatarPickerOptions = false
+                                cameraPhotoLauncher.launch(null)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(painter = painterResource(id = R.drawable.ic_camera), contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Take Selfie / Photo", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                showAvatarPickerOptions = false
+                                galleryLauncher.launch("image/*")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(painter = painterResource(id = R.drawable.ic_resources), contentDescription = null, tint = MmyrvPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Choose from Gallery", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold, color = MmyrvPrimary)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showAvatarPickerOptions = false }) {
+                        Text("Cancel", fontFamily = AppFontFamily, color = MmyrvTextMuted)
+                    }
+                }
+            )
+        }
+
+        // 7. High-Resolution Biometric Template Inspection Modal
+        if (showFullBiometricDialog) {
+            Dialog(onDismissRequest = { showFullBiometricDialog = false }) {
                 Card(
                     modifier = Modifier.fillMaxWidth(0.92f),
                     shape = RoundedCornerShape(24.dp),
@@ -740,7 +1000,7 @@ fun StudentProfileScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Biometric Photo Record",
+                                text = "Screen-Lock Biometric Template",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
@@ -751,7 +1011,7 @@ fun StudentProfileScreen(
                                     .size(32.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFFF1F5F9))
-                                    .clickable { showFullPhotoDialog = false },
+                                    .clickable { showFullBiometricDialog = false },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -769,22 +1029,22 @@ fun StudentProfileScreen(
                             modifier = Modifier
                                 .size(240.dp)
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(Color(0xFFEEF2FF))
-                                .border(BorderStroke(2.dp, Color(0xFFC7D2FE)), RoundedCornerShape(20.dp)),
+                                .background(Color(0xFF0F172A))
+                                .border(BorderStroke(2.dp, Color(0xFF10B981)), RoundedCornerShape(20.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (faceImageBitmap != null) {
+                            if (biometricImageBitmap != null) {
                                 Image(
-                                    bitmap = faceImageBitmap,
-                                    contentDescription = "High-Res Student Face",
+                                    bitmap = biometricImageBitmap,
+                                    contentDescription = "High-Res Biometric Face",
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
                                 )
                             } else {
                                 Icon(
-                                    painter = painterResource(id = R.drawable.ic_person),
+                                    painter = painterResource(id = R.drawable.ic_face_recognition),
                                     contentDescription = null,
-                                    tint = MmyrvPrimary,
+                                    tint = Color.White,
                                     modifier = Modifier.size(90.dp)
                                 )
                             }
@@ -800,8 +1060,8 @@ fun StudentProfileScreen(
                             color = MmyrvTextDark
                         )
                         Text(
-                            text = "Roll: ${user.rollNo}",
-                            fontSize = 13.sp,
+                            text = "Enrolled Biometric ID • Roll: ${user.rollNo}",
+                            fontSize = 12.5.sp,
                             fontFamily = AppFontFamily,
                             color = MmyrvTextMuted
                         )
@@ -810,14 +1070,14 @@ fun StudentProfileScreen(
 
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFECFDF5),
+                            color = Color(0xFFDCFCE7),
                             border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                         ) {
                             Text(
-                                text = "Verified AI Biometric Template",
+                                text = "Screen-Lock Strictness Active • 3D Landmarks Enrolled",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF047857),
+                                color = Color(0xFF15803D),
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
@@ -825,7 +1085,7 @@ fun StudentProfileScreen(
                         Spacer(modifier = Modifier.height(18.dp))
 
                         Button(
-                            onClick = { showFullPhotoDialog = false },
+                            onClick = { showFullBiometricDialog = false },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(44.dp),
@@ -844,16 +1104,16 @@ fun StudentProfileScreen(
             }
         }
 
-        // 6. Live In-App Front Camera Facial Scanner Modal
+        // 8. Screen-Lock Live Front Camera Biometric Scanner Modal
         if (showLiveFaceScanner) {
             LiveFaceScannerModal(
-                title = "Update Face Biometric",
-                subtitle = "Strict AI Landmark & Liveness Check",
-                registeredBase64 = currentPhotoBase64,
+                title = "Screen-Lock Biometric Scanner",
+                subtitle = "Strict AI 3D Landmark & Liveness Check",
+                registeredBase64 = currentBiometricPhoto,
                 onFaceCaptured = { _, base64 ->
                     showLiveFaceScanner = false
-                    currentPhotoBase64 = base64
-                    saveProfileToDatabase(newPhoto = base64)
+                    currentBiometricPhoto = base64
+                    saveProfileToDatabase(newBiometricPhoto = base64)
                 },
                 onDismiss = { showLiveFaceScanner = false }
             )
@@ -861,9 +1121,6 @@ fun StudentProfileScreen(
     }
 }
 
-/**
- * Standard Read-Only Record Row with soft blue icon container
- */
 @Composable
 private fun ProfileRecordRow(
     iconRes: Int,
@@ -914,9 +1171,6 @@ private fun ProfileRecordRow(
     }
 }
 
-/**
- * Editable Input Field for Edit Mode
- */
 @Composable
 private fun EditableRecordField(
     iconRes: Int,

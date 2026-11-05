@@ -379,6 +379,9 @@ private fun StudentApprovalCard(
     onReject: () -> Unit
 ) {
     var showFullFaceDialog by remember { mutableStateOf(false) }
+    val profileImageBitmap = remember(student.profilePhotoUrl) {
+        FaceDetectionHelper.base64ToImageBitmap(student.profilePhotoUrl)
+    }
     val realFaceBitmap = remember(student.facePhotoUrl) {
         FaceDetectionHelper.base64ToImageBitmap(student.facePhotoUrl)
     }
@@ -406,12 +409,21 @@ private fun StudentApprovalCard(
                         .background(if (student.isApproved) Color(0xFFDCFCE7) else MmyrvBadgeBg),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        painter = painterResource(id = if (student.isApproved) R.drawable.ic_check_circle else R.drawable.ic_school),
-                        contentDescription = null,
-                        tint = if (student.isApproved) Color(0xFF10B981) else MmyrvPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    if (profileImageBitmap != null) {
+                        Image(
+                            bitmap = profileImageBitmap,
+                            contentDescription = "Profile Photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = if (student.isApproved) R.drawable.ic_check_circle else R.drawable.ic_school),
+                            contentDescription = null,
+                            tint = if (student.isApproved) Color(0xFF10B981) else MmyrvPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
@@ -550,7 +562,7 @@ private fun StudentApprovalCard(
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Biometric Face ID",
+                                text = "Screen-Lock Biometric ID",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,

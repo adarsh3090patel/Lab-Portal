@@ -126,6 +126,7 @@ def get_all_students_for_approval():
             "programme": s.get("programme", "B.Sc. (Computer Science)"),
             "semester": s.get("semester", "Semester V"),
             "phone": s.get("phone", "+91 98765 43210"),
+            "profilePhotoUrl": s.get("profilePhotoUrl", s.get("facePhotoUrl", "")),
             "faceEnrolled": s.get("faceEnrolled", True),
             "facePhotoUrl": s.get("facePhotoUrl", ""),
             "isApproved": s.get("isApproved", False),
