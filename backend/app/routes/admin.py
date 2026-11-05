@@ -10,31 +10,36 @@ DEFAULT_COURSES = [
         "id": "course_bsc_cs",
         "name": "B.Sc. (Computer Science)",
         "code": "BSCCS",
-        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI"]
+        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI"],
+        "facultyName": "Department of Computer Science & IT"
     },
     {
         "id": "course_bca",
         "name": "BCA (Bachelor of Computer Applications)",
         "code": "BCA",
-        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI"]
+        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI"],
+        "facultyName": "Department of Computer Science & IT"
     },
     {
         "id": "course_btech_cse",
         "name": "B.Tech (Computer Science & Engineering)",
         "code": "BTECH-CSE",
-        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI", "Semester VII", "Semester VIII"]
+        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI", "Semester VII", "Semester VIII"],
+        "facultyName": "Faculty of Engineering & Technology"
     },
     {
         "id": "course_msc_it",
         "name": "M.Sc. (Information Technology)",
         "code": "MSCIT",
-        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV"]
+        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV"],
+        "facultyName": "Department of Information Technology"
     },
     {
         "id": "course_mca",
         "name": "MCA (Master of Computer Applications)",
         "code": "MCA",
-        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV"]
+        "semesters": ["Semester I", "Semester II", "Semester III", "Semester IV"],
+        "facultyName": "Faculty of Engineering & Technology"
     }
 ]
 
@@ -47,11 +52,14 @@ def get_all_courses():
     courses_col = db["courses"]
     courses = list(courses_col.find())
     if not courses:
-        # Seed default courses
+        # Fast bulk insert seed default courses
+        docs = []
         for c in DEFAULT_COURSES:
             c_copy = dict(c)
             del c_copy["id"]
-            courses_col.insert_one(c_copy)
+            docs.append(c_copy)
+        if docs:
+            courses_col.insert_many(docs)
         courses = list(courses_col.find())
     
     result = []
@@ -60,7 +68,8 @@ def get_all_courses():
             "id": str(c["_id"]),
             "name": c.get("name", ""),
             "code": c.get("code", ""),
-            "semesters": c.get("semesters", [])
+            "semesters": c.get("semesters", []),
+            "facultyName": c.get("facultyName", "Faculty of Engineering & Technology")
         })
     return result
 
@@ -77,7 +86,8 @@ def add_new_course(req: CourseCreateRequest):
     new_course = {
         "name": req.name.strip(),
         "code": req.code.strip().upper(),
-        "semesters": req.semesters
+        "semesters": req.semesters,
+        "facultyName": (req.facultyName or "Faculty of Engineering & Technology").strip()
     }
     result = courses_col.insert_one(new_course)
     return {
@@ -86,7 +96,8 @@ def add_new_course(req: CourseCreateRequest):
             "id": str(result.inserted_id),
             "name": req.name,
             "code": req.code,
-            "semesters": req.semesters
+            "semesters": req.semesters,
+            "facultyName": req.facultyName
         }
     }
 
@@ -113,7 +124,7 @@ def get_all_students_for_approval():
             detail="Database connection not ready."
         )
     users_col = db["users"]
-    students = list(users_col.find({"role": {"$ne": "Admin"}}).sort("_id", -1))
+    students = list(users_col.find({"role": {"$ne": "Admin"}, "status": {"$ne": "rejected"}}).sort("_id", -1))
     
     result = []
     for s in students:
@@ -122,14 +133,80 @@ def get_all_students_for_approval():
             "fullName": s.get("fullName", ""),
             "email": s.get("email", ""),
             "rollNo": s.get("rollNo", ""),
+            "enrollmentNo": s.get("enrollmentNo", s.get("rollNo", "")),
+            "collegeName": s.get("collegeName", "Maharishi Mahesh Yogi Ramayan University Ayodhya"),
             "role": s.get("role", "Student"),
             "programme": s.get("programme", "B.Sc. (Computer Science)"),
             "semester": s.get("semester", "Semester V"),
+            "department": s.get("department", "Computer Science & Engineering"),
             "phone": s.get("phone", "+91 98765 43210"),
             "profilePhotoUrl": s.get("profilePhotoUrl", s.get("facePhotoUrl", "")),
             "faceEnrolled": s.get("faceEnrolled", True),
             "facePhotoUrl": s.get("facePhotoUrl", ""),
             "isApproved": s.get("isApproved", False),
+            "status": s.get("status", "pending" if not s.get("isApproved") else "approved"),
+            "createdAt": s.get("createdAt", "Recent")
+        })
+    return result
+
+@router.get("/api/admin/all-students")
+def get_all_approved_students():
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    students = list(users_col.find({"role": {"$ne": "Admin"}, "isApproved": True}).sort("_id", -1))
+    
+    result = []
+    for s in students:
+        result.append({
+            "id": str(s["_id"]),
+            "fullName": s.get("fullName", ""),
+            "email": s.get("email", ""),
+            "rollNo": s.get("rollNo", ""),
+            "enrollmentNo": s.get("enrollmentNo", s.get("rollNo", "")),
+            "collegeName": s.get("collegeName", "Maharishi Mahesh Yogi Ramayan University Ayodhya"),
+            "role": s.get("role", "Student"),
+            "programme": s.get("programme", "B.Sc. (Computer Science)"),
+            "semester": s.get("semester", "Semester V"),
+            "department": s.get("department", "Computer Science & Engineering"),
+            "phone": s.get("phone", "+91 98765 43210"),
+            "profilePhotoUrl": s.get("profilePhotoUrl", s.get("facePhotoUrl", "")),
+            "faceEnrolled": s.get("faceEnrolled", True),
+            "facePhotoUrl": s.get("facePhotoUrl", ""),
+            "isApproved": True,
+            "status": "approved",
+            "createdAt": s.get("createdAt", "Recent")
+        })
+    return result
+
+@router.get("/api/admin/rejected-students")
+def get_rejected_students():
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    students = list(users_col.find({"role": {"$ne": "Admin"}, "status": "rejected"}).sort("_id", -1))
+    
+    result = []
+    for s in students:
+        result.append({
+            "id": str(s["_id"]),
+            "fullName": s.get("fullName", ""),
+            "email": s.get("email", ""),
+            "rollNo": s.get("rollNo", ""),
+            "enrollmentNo": s.get("enrollmentNo", s.get("rollNo", "")),
+            "collegeName": s.get("collegeName", "Maharishi Mahesh Yogi Ramayan University Ayodhya"),
+            "role": s.get("role", "Student"),
+            "programme": s.get("programme", "B.Sc. (Computer Science)"),
+            "semester": s.get("semester", "Semester V"),
+            "department": s.get("department", "Computer Science & Engineering"),
+            "phone": s.get("phone", "+91 98765 43210"),
+            "profilePhotoUrl": s.get("profilePhotoUrl", s.get("facePhotoUrl", "")),
+            "faceEnrolled": s.get("faceEnrolled", True),
+            "facePhotoUrl": s.get("facePhotoUrl", ""),
+            "isApproved": False,
+            "status": "rejected",
             "createdAt": s.get("createdAt", "Recent")
         })
     return result
@@ -145,7 +222,7 @@ def approve_student(user_id: str):
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
 
-    res = users_col.update_one({"_id": obj_id}, {"$set": {"isApproved": True}})
+    res = users_col.update_one({"_id": obj_id}, {"$set": {"isApproved": True, "status": "approved"}})
     if res.matched_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
     
@@ -162,9 +239,24 @@ def reject_student(user_id: str):
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
 
-    res = users_col.delete_one({"_id": obj_id})
-    if res.deleted_count == 0:
+    res = users_col.update_one({"_id": obj_id}, {"$set": {"isApproved": False, "status": "rejected"}})
+    if res.matched_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
     
-    return {"message": "Student registration rejected and removed", "success": True}
+    return {"message": "Student registration marked as rejected", "success": True}
+
+@router.delete("/api/admin/delete-student/{user_id}")
+def delete_student_permanently(user_id: str):
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    res = users_col.delete_one({"_id": obj_id})
+    return {"message": "Student record permanently deleted", "success": True}
+
 

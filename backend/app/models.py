@@ -18,6 +18,7 @@ class CourseCreateRequest(BaseModel):
     name: str
     code: str
     semesters: List[str]
+    facultyName: Optional[str] = "Department of Computer Science & Engineering"
 
 class UserLoginRequest(BaseModel):
     email: str

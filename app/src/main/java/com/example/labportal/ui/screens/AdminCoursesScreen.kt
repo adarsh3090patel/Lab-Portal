@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,27 +15,33 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -64,6 +71,11 @@ import com.example.labportal.ui.theme.MmyrvTextDark
 import com.example.labportal.ui.theme.MmyrvTextMuted
 import kotlinx.coroutines.launch
 
+object CourseCache {
+    var list: List<CourseDto> = emptyList()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminCoursesScreen(
     onBackClick: () -> Unit
@@ -71,33 +83,41 @@ fun AdminCoursesScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var isLoading by remember { mutableStateOf(true) }
-    var showAddCourseDialog by remember { mutableStateOf(false) }
-    val coursesList = remember { mutableStateListOf<CourseDto>() }
+    var showAddCourseSheet by remember { mutableStateOf(false) }
 
-    fun loadCourses() {
-        isLoading = true
+    // Instant 0ms loading from in-memory cache or default static courses
+    val coursesList = remember {
+        mutableStateListOf<CourseDto>().apply {
+            if (CourseCache.list.isNotEmpty()) {
+                addAll(CourseCache.list)
+            } else {
+                addAll(defaultStaticCourses())
+            }
+        }
+    }
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    fun loadCourses(showSpinner: Boolean = false) {
+        if (showSpinner) isRefreshing = true
         coroutineScope.launch {
             try {
                 val res = NetworkClient.apiService.getCourses()
-                isLoading = false
-                if (res.isSuccessful && res.body() != null) {
+                isRefreshing = false
+                if (res.isSuccessful && !res.body().isNullOrEmpty()) {
+                    val fresh = res.body()!!
+                    CourseCache.list = fresh
                     coursesList.clear()
-                    coursesList.addAll(res.body()!!)
-                } else if (coursesList.isEmpty()) {
-                    coursesList.addAll(defaultStaticCourses())
+                    coursesList.addAll(fresh)
                 }
             } catch (e: Exception) {
-                isLoading = false
-                if (coursesList.isEmpty()) {
-                    coursesList.addAll(defaultStaticCourses())
-                }
+                isRefreshing = false
             }
         }
     }
 
     LaunchedEffect(Unit) {
-        loadCourses()
+        // Fast background sync so the screen opens immediately in 0ms without waiting
+        loadCourses(showSpinner = false)
     }
 
     Scaffold(
@@ -107,33 +127,42 @@ fun AdminCoursesScreen(
                     .fillMaxWidth()
                     .background(Color.White)
                     .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                    .padding(horizontal = 10.dp, vertical = 10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_menu),
-                            contentDescription = "Back to dashboard",
-                            tint = MmyrvTextDark,
-                            modifier = Modifier.size(24.dp)
-                        )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, MmyrvBorder),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable { onBackClick() }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_arrow_back),
+                                contentDescription = "Back",
+                                tint = MmyrvTextDark,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Courses & Programmes",
-                            fontSize = 17.sp,
+                            fontSize = 17.5.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = AppFontFamily,
                             color = MmyrvTextDark
                         )
                         Text(
-                            text = "Manage degrees & semesters for registration",
+                            text = "Manage university degrees & semesters",
                             fontSize = 11.5.sp,
                             fontFamily = AppFontFamily,
                             color = MmyrvTextMuted
@@ -141,10 +170,10 @@ fun AdminCoursesScreen(
                     }
 
                     Button(
-                        onClick = { showAddCourseDialog = true },
+                        onClick = { showAddCourseSheet = true },
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
-                        modifier = Modifier.height(36.dp)
+                        modifier = Modifier.height(38.dp)
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_add),
@@ -199,17 +228,30 @@ fun AdminCoursesScreen(
 
                     Spacer(modifier = Modifier.width(12.dp))
 
-                    Column {
-                        Text(
-                            text = "${coursesList.size} Active Degree Programmes",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = AppFontFamily,
-                            color = MmyrvTextDark
-                        )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "${coursesList.size} Active Degree Programmes",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextDark
+                            )
+                            if (isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MmyrvPrimary
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Courses and semesters added here appear automatically in student registration dropdowns.",
+                            text = "Programmes and semesters added here appear instantly in student registration dropdowns.",
                             fontSize = 11.5.sp,
                             fontFamily = AppFontFamily,
                             color = MmyrvTextMuted,
@@ -219,63 +261,68 @@ fun AdminCoursesScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MmyrvPrimary, modifier = Modifier.size(32.dp))
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(coursesList, key = { it.id }) { course ->
-                        CourseManagementCard(
-                            course = course,
-                            onDelete = {
-                                coroutineScope.launch {
-                                    try {
-                                        NetworkClient.apiService.deleteCourse(course.id)
-                                    } catch (_: Exception) {}
-                                    coursesList.removeAll { it.id == course.id }
-                                    Toast.makeText(context, "${course.name} removed", Toast.LENGTH_SHORT).show()
-                                }
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(coursesList, key = { it.id }) { course ->
+                    CourseManagementCard(
+                        course = course,
+                        onDelete = {
+                            coroutineScope.launch {
+                                try {
+                                    NetworkClient.apiService.deleteCourse(course.id)
+                                } catch (_: Exception) {}
+                                coursesList.removeAll { it.id == course.id }
+                                CourseCache.list = coursesList.toList()
+                                Toast.makeText(context, "${course.name} removed", Toast.LENGTH_SHORT).show()
                             }
-                        )
-                    }
+                        }
+                    )
                 }
             }
         }
     }
 
-    if (showAddCourseDialog) {
-        AddCourseModal(
-            onDismiss = { showAddCourseDialog = false },
-            onAdd = { name, code, semestersCount ->
+    // Add Course Bottom Slide Panel (ModalBottomSheet) with 100% width and compact height
+    if (showAddCourseSheet) {
+        AddCourseBottomSheet(
+            onDismiss = { showAddCourseSheet = false },
+            onAdd = { name, code, semestersCount, facultyName ->
                 val generatedSemesters = (1..semestersCount).map { i ->
                     val roman = when (i) {
                         1 -> "I"; 2 -> "II"; 3 -> "III"; 4 -> "IV"
                         5 -> "V"; 6 -> "VI"; 7 -> "VII"; 8 -> "VIII"
+                        9 -> "IX"; 10 -> "X"
                         else -> "$i"
                     }
                     "Semester $roman"
                 }
 
-                val newDto = CourseCreateDto(name = name, code = code, semesters = generatedSemesters)
+                val newDto = CourseCreateDto(
+                    name = name,
+                    code = code,
+                    semesters = generatedSemesters,
+                    facultyName = facultyName
+                )
+
                 coroutineScope.launch {
+                    val newCourse = CourseDto(
+                        id = "c_${System.currentTimeMillis()}",
+                        name = name,
+                        code = code,
+                        semesters = generatedSemesters,
+                        facultyName = facultyName
+                    )
                     try {
                         NetworkClient.apiService.addCourse(newDto)
                     } catch (_: Exception) {}
-                    coursesList.add(
-                        CourseDto(
-                            id = "c_${System.currentTimeMillis()}",
-                            name = name,
-                            code = code,
-                            semesters = generatedSemesters
-                        )
-                    )
-                    showAddCourseDialog = false
+
+                    coursesList.add(0, newCourse)
+                    CourseCache.list = coursesList.toList()
+                    showAddCourseSheet = false
                     Toast.makeText(context, "Added $name successfully!", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -338,6 +385,16 @@ private fun CourseManagementCard(
                         color = MmyrvPrimary,
                         fontWeight = FontWeight.SemiBold
                     )
+                    if (course.facultyName.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Faculty: ${course.facultyName}",
+                            fontSize = 11.sp,
+                            fontFamily = AppFontFamily,
+                            color = Color(0xFF64748B),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
                 IconButton(
@@ -345,7 +402,7 @@ private fun CourseManagementCard(
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_logout),
+                        painter = painterResource(id = R.drawable.ic_delete),
                         contentDescription = "Delete Course",
                         tint = Color(0xFFEF4444),
                         modifier = Modifier.size(18.dp)
@@ -394,108 +451,267 @@ private fun CourseManagementCard(
     }
 }
 
+// Bottom Slide Panel (ModalBottomSheet): 100% width, compact height, inputs: Name, Code, Semesters, Faculty Name
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddCourseModal(
+private fun AddCourseBottomSheet(
     onDismiss: () -> Unit,
-    onAdd: (name: String, code: String, semestersCount: Int) -> Unit
+    onAdd: (name: String, code: String, semestersCount: Int, facultyName: String) -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     var courseName by remember { mutableStateOf("") }
     var courseCode by remember { mutableStateOf("") }
     var semestersCountStr by remember { mutableStateOf("6") }
+    var facultyName by remember { mutableStateOf("") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_school),
-                    contentDescription = null,
-                    tint = MmyrvPrimary,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Add Degree / Course",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = AppFontFamily,
-                    color = MmyrvTextDark
-                )
-            }
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Add a new programme and define its total semesters for student registration.",
-                    fontSize = 12.sp,
-                    fontFamily = AppFontFamily,
-                    color = MmyrvTextMuted
-                )
-
-                if (!errorMsg.isNullOrEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = errorMsg!!, color = Color(0xFFEF4444), fontSize = 11.5.sp, fontFamily = AppFontFamily)
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp, bottom = 4.dp)
+                    .width(42.dp)
+                    .height(4.5.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFFCBD5E1))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_school),
+                            contentDescription = null,
+                            tint = MmyrvPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Add Degree / Course",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvTextDark
+                        )
+                        Text(
+                            text = "Appears automatically in student registration",
+                            fontSize = 11.5.sp,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvTextMuted
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_close),
+                        contentDescription = "Close",
+                        tint = MmyrvTextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
 
-                OutlinedTextField(
-                    value = courseName,
-                    onValueChange = { courseName = it; errorMsg = null },
-                    label = { Text("Degree Name (e.g. B.Sc. Data Science)", fontSize = 12.sp, fontFamily = AppFontFamily) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
+            if (!errorMsg.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFEF2F2),
+                    border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = errorMsg!!,
+                        color = Color(0xFFDC2626),
+                        fontSize = 11.5.sp,
+                        fontFamily = AppFontFamily,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
 
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 1. Course Name
+            OutlinedTextField(
+                value = courseName,
+                onValueChange = { courseName = it; errorMsg = null },
+                label = { Text("Course / Degree Name *", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                placeholder = { Text("e.g. B.Tech (AI & Machine Learning)", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MmyrvPrimary,
+                    unfocusedBorderColor = Color(0xFFCBD5E1),
+                    focusedContainerColor = Color(0xFFF8FAFC),
+                    unfocusedContainerColor = Color(0xFFF8FAFC)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 2. Course Code & Semesters Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedTextField(
                     value = courseCode,
-                    onValueChange = { courseCode = it; errorMsg = null },
-                    label = { Text("Course Code (e.g. BSDS)", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                    onValueChange = { courseCode = it.uppercase(); errorMsg = null },
+                    label = { Text("Code *", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                    placeholder = { Text("e.g. BTECH-AIML", fontSize = 11.sp, fontFamily = AppFontFamily) },
                     singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MmyrvPrimary,
+                        unfocusedBorderColor = Color(0xFFCBD5E1),
+                        focusedContainerColor = Color(0xFFF8FAFC),
+                        unfocusedContainerColor = Color(0xFFF8FAFC)
+                    ),
+                    modifier = Modifier.weight(1f)
                 )
-
-                Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = semestersCountStr,
                     onValueChange = { semestersCountStr = it; errorMsg = null },
-                    label = { Text("Number of Semesters (e.g. 6 or 8)", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                    label = { Text("Semesters *", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                    placeholder = { Text("e.g. 6 or 8", fontSize = 11.sp, fontFamily = AppFontFamily) },
                     singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MmyrvPrimary,
+                        unfocusedBorderColor = Color(0xFFCBD5E1),
+                        focusedContainerColor = Color(0xFFF8FAFC),
+                        unfocusedContainerColor = Color(0xFFF8FAFC)
+                    ),
+                    modifier = Modifier.weight(1f)
                 )
             }
-        },
-        confirmButton = {
+
+            // Quick Semester Selector Chips
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Quick:", fontSize = 11.sp, fontFamily = AppFontFamily, color = MmyrvTextMuted)
+                listOf("2", "4", "6", "8", "10").forEach { count ->
+                    val isSelected = semestersCountStr == count
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) MmyrvPrimary else Color(0xFFF1F5F9),
+                        border = BorderStroke(1.dp, if (isSelected) MmyrvPrimary else Color(0xFFE2E8F0)),
+                        modifier = Modifier
+                            .clickable { semestersCountStr = count; errorMsg = null }
+                    ) {
+                        Text(
+                            text = "$count Sem",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = AppFontFamily,
+                            color = if (isSelected) Color.White else MmyrvTextDark,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 3. Faculty Name / Department
+            OutlinedTextField(
+                value = facultyName,
+                onValueChange = { facultyName = it },
+                label = { Text("Faculty / Department Name", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                placeholder = { Text("e.g. School of Computer Sciences", fontSize = 12.sp, fontFamily = AppFontFamily) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MmyrvPrimary,
+                    unfocusedBorderColor = Color(0xFFCBD5E1),
+                    focusedContainerColor = Color(0xFFF8FAFC),
+                    unfocusedContainerColor = Color(0xFFF8FAFC)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Submit Button
             Button(
                 onClick = {
                     val trimmedName = courseName.trim()
                     val trimmedCode = courseCode.trim()
-                    val count = semestersCountStr.trim().toIntOrNull() ?: 6
-                    if (trimmedName.isBlank() || trimmedCode.isBlank()) {
-                        errorMsg = "Please fill in course name and code."
+                    val count = semestersCountStr.trim().toIntOrNull()
+                    if (trimmedName.isBlank()) {
+                        errorMsg = "Please enter the Course / Degree Name."
                         return@Button
                     }
-                    onAdd(trimmedName, trimmedCode, count)
+                    if (trimmedCode.isBlank()) {
+                        errorMsg = "Please enter the Course Code."
+                        return@Button
+                    }
+                    if (count == null || count <= 0 || count > 12) {
+                        errorMsg = "Please enter a valid number of semesters (1 to 12)."
+                        return@Button
+                    }
+                    onAdd(trimmedName, trimmedCode, count, facultyName.trim())
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
             ) {
-                Text(text = "Add Course", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_check_circle),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Save & Add Course",
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "Cancel", fontFamily = AppFontFamily, color = MmyrvTextMuted)
-            }
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
-    )
+    }
 }
 
 fun defaultStaticCourses(): List<CourseDto> {
@@ -504,32 +720,36 @@ fun defaultStaticCourses(): List<CourseDto> {
             id = "c1",
             name = "B.Sc. (Computer Science)",
             code = "BSCCS",
-            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI")
+            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI"),
+            facultyName = "School of Computer Science & IT"
         ),
         CourseDto(
             id = "c2",
             name = "BCA (Bachelor of Computer Applications)",
             code = "BCA",
-            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI")
+            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI"),
+            facultyName = "Department of Computer Applications"
         ),
         CourseDto(
             id = "c3",
             name = "B.Tech (Computer Science & Engineering)",
             code = "BTECH-CSE",
-            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI", "Semester VII", "Semester VIII")
+            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV", "Semester V", "Semester VI", "Semester VII", "Semester VIII"),
+            facultyName = "Faculty of Engineering & Technology"
         ),
         CourseDto(
             id = "c4",
             name = "M.Sc. (Information Technology)",
             code = "MSCIT",
-            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV")
+            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV"),
+            facultyName = "School of Computer Science & IT"
         ),
         CourseDto(
             id = "c5",
             name = "MCA (Master of Computer Applications)",
             code = "MCA",
-            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV")
+            semesters = listOf("Semester I", "Semester II", "Semester III", "Semester IV"),
+            facultyName = "Department of Computer Applications"
         )
     )
 }
-

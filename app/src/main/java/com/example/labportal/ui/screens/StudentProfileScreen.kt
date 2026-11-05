@@ -240,11 +240,14 @@ fun StudentProfileScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            // 1. Top Bar: Back Button, Title/Subtitle, Edit Profile Button (Fully below notch/status bar)
+            // Extra spacing so camera punch-hole / dynamic island never overlaps the top bar
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 1. Top Bar: Back Button, Title/Subtitle, Edit Profile Button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 6.dp),
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -273,7 +276,7 @@ fun StudentProfileScreen(
                 ) {
                     Text(
                         text = "Student Profile",
-                        fontSize = 19.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = AppFontFamily,
                         color = MmyrvTextDark
@@ -286,53 +289,33 @@ fun StudentProfileScreen(
                     )
                 }
 
-                // Edit Profile Button (Opens interactive edit dialog and toggles mode)
+                // Edit Profile Button (Opens interactive edit dialog with all contact/personal fields)
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = if (isEditMode) MmyrvPrimary else Color(0xFFEEF2FF),
-                    border = BorderStroke(1.dp, if (isEditMode) MmyrvPrimary else Color(0xFFC7D2FE)),
+                    color = Color(0xFFEEF2FF),
+                    border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
                     modifier = Modifier.clickable {
-                        if (isEditMode) {
-                            saveProfileToDatabase()
-                        } else {
-                            showEditProfileDialog = true
-                        }
+                        showEditProfileDialog = true
                     }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Saving...",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = AppFontFamily,
-                                color = Color.White
-                            )
-                        } else {
-                            Icon(
-                                painter = painterResource(id = if (isEditMode) R.drawable.ic_check_circle else R.drawable.ic_edit),
-                                contentDescription = "Edit Profile",
-                                tint = if (isEditMode) Color.White else MmyrvPrimary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isEditMode) "Save" else "Edit Profile",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = AppFontFamily,
-                                color = if (isEditMode) Color.White else MmyrvPrimary
-                            )
-                        }
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_edit),
+                            contentDescription = "Edit Profile",
+                            tint = MmyrvPrimary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Edit Profile",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvPrimary
+                        )
                     }
                 }
             }

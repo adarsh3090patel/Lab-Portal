@@ -82,14 +82,18 @@ data class StudentApprovalDto(
     val fullName: String,
     val email: String,
     val rollNo: String,
+    val enrollmentNo: String = "",
+    val collegeName: String = "Maharishi Mahesh Yogi Ramayan University Ayodhya",
     val role: String,
     val programme: String = "B.Sc. (Computer Science)",
     val semester: String = "Semester V",
+    val department: String = "Computer Science & Engineering",
     val phone: String = "+91 98765 43210",
     val profilePhotoUrl: String = "",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = "",
     @SerializedName("isApproved") val isApproved: Boolean = false,
+    val status: String = "pending",
     val createdAt: String? = null
 )
 
@@ -102,13 +106,15 @@ data class CourseDto(
     val id: String,
     val name: String,
     val code: String,
-    val semesters: List<String>
+    val semesters: List<String>,
+    val facultyName: String = "Faculty of Engineering & Technology"
 )
 
 data class CourseCreateDto(
     val name: String,
     val code: String,
-    val semesters: List<String>
+    val semesters: List<String>,
+    val facultyName: String = "Faculty of Engineering & Technology"
 )
 
 data class HealthResponse(
@@ -126,11 +132,20 @@ interface AuthApiService {
     @GET("api/admin/students")
     suspend fun getStudentsForApproval(): Response<List<StudentApprovalDto>>
 
+    @GET("api/admin/all-students")
+    suspend fun getAllApprovedStudents(): Response<List<StudentApprovalDto>>
+
+    @GET("api/admin/rejected-students")
+    suspend fun getRejectedStudents(): Response<List<StudentApprovalDto>>
+
     @POST("api/admin/approve-student/{id}")
     suspend fun approveStudent(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
 
     @POST("api/admin/reject-student/{id}")
     suspend fun rejectStudent(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+
+    @retrofit2.http.DELETE("api/admin/delete-student/{id}")
+    suspend fun deleteStudentPermanently(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
 
     @GET("api/courses")
     suspend fun getCourses(): Response<List<CourseDto>>

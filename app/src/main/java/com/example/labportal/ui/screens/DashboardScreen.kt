@@ -76,6 +76,8 @@ fun DashboardScreen(
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showAdminApprovalsPage by remember { mutableStateOf(false) }
     var showAdminCoursesPage by remember { mutableStateOf(false) }
+    var showAdminAllStudentsPage by remember { mutableStateOf(false) }
+    var showAdminRejectedStudentsPage by remember { mutableStateOf(false) }
 
     val isAdmin = user.role.equals("Admin", ignoreCase = true)
     var currentUser by remember { mutableStateOf(user) }
@@ -85,6 +87,22 @@ fun DashboardScreen(
     if (showAdminApprovalsPage && isAdmin) {
         AdminStudentApprovalsScreen(
             onBackClick = { showAdminApprovalsPage = false }
+        )
+        return
+    }
+
+    // Admin All Approved Students Fullscreen View
+    if (showAdminAllStudentsPage && isAdmin) {
+        AdminAllStudentsScreen(
+            onBackClick = { showAdminAllStudentsPage = false }
+        )
+        return
+    }
+
+    // Admin Rejected Students Fullscreen View
+    if (showAdminRejectedStudentsPage && isAdmin) {
+        AdminRejectedStudentsScreen(
+            onBackClick = { showAdminRejectedStudentsPage = false }
         )
         return
     }
@@ -482,7 +500,7 @@ fun DashboardScreen(
                             title = "Student Approvals",
                             subtitle = "Verify pending student accounts",
                             iconRes = R.drawable.ic_badge,
-                            badgeText = "NEW",
+                            badgeText = "PENDING",
                             isSelected = showAdminApprovalsPage
                         ) {
                             coroutineScope.launch { drawerState.close() }
@@ -492,10 +510,36 @@ fun DashboardScreen(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         DrawerMenuItem(
+                            title = "All Students",
+                            subtitle = "Search & filter approved students",
+                            iconRes = R.drawable.ic_person,
+                            badgeText = "ACTIVE",
+                            isSelected = showAdminAllStudentsPage
+                        ) {
+                            coroutineScope.launch { drawerState.close() }
+                            showAdminAllStudentsPage = true
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        DrawerMenuItem(
+                            title = "Rejected Students",
+                            subtitle = "Declined accounts & restore",
+                            iconRes = R.drawable.ic_close,
+                            badgeText = "DECLINED",
+                            isSelected = showAdminRejectedStudentsPage
+                        ) {
+                            coroutineScope.launch { drawerState.close() }
+                            showAdminRejectedStudentsPage = true
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        DrawerMenuItem(
                             title = "Courses & Programmes",
-                            subtitle = "Manage degrees & semesters",
+                            subtitle = "Manage degrees, semesters & faculty",
                             iconRes = R.drawable.ic_school,
-                            badgeText = "NEW",
+                            badgeText = "COURSES",
                             isSelected = showAdminCoursesPage
                         ) {
                             coroutineScope.launch { drawerState.close() }
