@@ -175,18 +175,33 @@ fun RegisterScreen(
         }
     }
 
-    // Real Camera Capture Launcher
+    // Real Camera Capture Launcher with Strict Face Validation
+    var isVerifyingFace by remember { mutableStateOf(false) }
+
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         if (bitmap != null) {
-            val analysis = FaceDetectionHelper.analyzeFace(bitmap)
-            capturedFaceBitmap = bitmap
-            facePhotoBase64 = FaceDetectionHelper.bitmapToBase64(bitmap)
-            faceEnrolled = true
-            faceDetectionMsg = analysis.message
-            localValidationMsg = null
-            Toast.makeText(context, "Real Face Captured: ${analysis.message}", Toast.LENGTH_SHORT).show()
+            isVerifyingFace = true
+            coroutineScope.launch {
+                val strictCheck = FaceDetectionHelper.validateStrictFace(bitmap)
+                isVerifyingFace = false
+                if (strictCheck.isValid) {
+                    capturedFaceBitmap = bitmap
+                    facePhotoBase64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+                    faceEnrolled = true
+                    faceDetectionMsg = strictCheck.message
+                    localValidationMsg = null
+                    Toast.makeText(context, "Real Face Verified! Biometrics Enrolled.", Toast.LENGTH_SHORT).show()
+                } else {
+                    capturedFaceBitmap = null
+                    facePhotoBase64 = ""
+                    faceEnrolled = false
+                    faceDetectionMsg = null
+                    localValidationMsg = "Biometric Verification Failed:\n${strictCheck.message}"
+                    Toast.makeText(context, strictCheck.message, Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -678,58 +693,51 @@ fun RegisterScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            // Primary Action: Open Device Front Camera for Strict Face ID
+                            Button(
+                                onClick = {
+                                    try {
+                                        takePictureLauncher.launch(null)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Could not launch camera: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = !isVerifyingFace,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
+                                )
                             ) {
-                                // Primary Action: Open Device Camera
-                                Button(
-                                    onClick = {
-                                        try {
-                                            takePictureLauncher.launch(null)
-                                        } catch (e: Exception) {
-                                            showFaceScanModal = true
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1.2f)
-                                        .height(38.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
+                                if (isVerifyingFace) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                ) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Analyzing Facial Landmarks...",
+                                        fontSize = 12.sp,
+                                        fontFamily = AppFontFamily,
+                                        color = Color.White
+                                    )
+                                } else {
                                     Icon(
                                         painter = painterResource(id = R.drawable.ic_face_recognition),
                                         contentDescription = null,
                                         tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = if (faceEnrolled) "Retake Real Photo" else "Open Camera & Capture Face",
-                                        fontSize = 11.5.sp,
+                                        text = if (faceEnrolled) "Retake Real Face Photo" else "Open Camera & Capture Face (Strict AI)",
+                                        fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = AppFontFamily,
                                         color = Color.White
-                                    )
-                                }
-
-                                // Secondary Action: Guided Scanner
-                                OutlinedButton(
-                                    onClick = { showFaceScanModal = true },
-                                    modifier = Modifier
-                                        .weight(0.8f)
-                                        .height(38.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-                                ) {
-                                    Text(
-                                        text = "Scan Mode",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontFamily = AppFontFamily,
-                                        color = MmyrvTextDark
                                     )
                                 }
                             }

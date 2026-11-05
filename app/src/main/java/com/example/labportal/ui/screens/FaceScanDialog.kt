@@ -76,16 +76,28 @@ fun FaceScanDialog(
     var scanSuccess by remember { mutableStateOf(false) }
     var realCapturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var verificationText by remember { mutableStateOf<String?>(null) }
+    var verificationError by remember { mutableStateOf<String?>(null) }
 
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         if (bitmap != null) {
-            val analysis = FaceDetectionHelper.analyzeFace(bitmap)
+            isScanning = true
             realCapturedBitmap = bitmap
-            scanSuccess = true
-            verificationText = "Real Face Verified (${(analysis.confidence * 100).toInt()}% match)"
-            Toast.makeText(context, "Attendance Marked for AI & Robotics Lab Successfully!", Toast.LENGTH_LONG).show()
+            coroutineScope.launch {
+                val matchResult = FaceDetectionHelper.verifyFaceMatch(bitmap, user.facePhotoUrl)
+                isScanning = false
+                if (matchResult.isMatch) {
+                    scanSuccess = true
+                    verificationError = null
+                    verificationText = matchResult.message
+                    Toast.makeText(context, "Attendance Marked for AI & Robotics Lab Successfully!", Toast.LENGTH_LONG).show()
+                } else {
+                    scanSuccess = false
+                    verificationError = matchResult.message
+                    Toast.makeText(context, matchResult.message, Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -210,13 +222,18 @@ fun FaceScanDialog(
                 Text(
                     text = when {
                         scanSuccess -> verificationText ?: "Verified! Attendance marked successfully."
-                        isScanning -> "Detecting facial landmarks..."
-                        else -> "Open camera or start scan to verify your practical lab presence."
+                        verificationError != null -> verificationError!!
+                        isScanning -> "Analyzing AI biometric landmarks & matching face..."
+                        else -> "Point camera at your face with eyes open to mark practical lab presence."
                     },
                     fontSize = 12.sp,
                     fontFamily = AppFontFamily,
-                    color = if (scanSuccess) Color(0xFF10B981) else MmyrvTextDark,
-                    fontWeight = if (scanSuccess) FontWeight.Bold else FontWeight.Medium,
+                    color = when {
+                        scanSuccess -> Color(0xFF10B981)
+                        verificationError != null -> Color(0xFFEF4444)
+                        else -> MmyrvTextDark
+                    },
+                    fontWeight = if (scanSuccess || verificationError != null) FontWeight.Bold else FontWeight.Medium,
                     textAlign = TextAlign.Center,
                     lineHeight = 16.sp
                 )
@@ -232,24 +249,27 @@ fun FaceScanDialog(
         },
         confirmButton = {
             if (!scanSuccess) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            try {
-                                takePictureLauncher.launch(null)
-                            } catch (_: Exception) {
-                                isScanning = true
-                                coroutineScope.launch {
-                                    delay(1600)
-                                    isScanning = false
-                                    scanSuccess = true
-                                    Toast.makeText(context, "Attendance Marked for Lab Successfully!", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
+                Button(
+                    onClick = {
+                        try {
+                            takePictureLauncher.launch(null)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Could not open camera: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isScanning
+                ) {
+                    if (isScanning) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Verifying...", fontSize = 12.sp, fontFamily = AppFontFamily)
+                    } else {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_face_recognition),
                             contentDescription = null,
@@ -257,32 +277,12 @@ fun FaceScanDialog(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Open Camera", fontSize = 12.sp, fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            isScanning = true
-                            coroutineScope.launch {
-                                delay(1600)
-                                isScanning = false
-                                scanSuccess = true
-                                verificationText = "Biometric Match Verified"
-                                Toast.makeText(context, "Attendance Marked for Lab Successfully!", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        enabled = !isScanning
-                    ) {
-                        if (isScanning) {
-                            CircularProgressIndicator(
-                                color = MmyrvPrimary,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        } else {
-                            Text("Auto Scan", fontSize = 12.sp, fontFamily = AppFontFamily)
-                        }
+                        Text(
+                            text = if (verificationError != null) "Retry Face Verification" else "Open Camera & Verify Face",
+                            fontSize = 12.5.sp,
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             } else {
