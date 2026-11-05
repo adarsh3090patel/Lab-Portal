@@ -93,17 +93,26 @@ fun LoginScreen(
         AlertDialog(
             onDismissRequest = { showServerDialog = false },
             title = {
-                Text(
-                    text = "⚙️ Backend Server URL",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = MmyrvTextDark
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_settings),
+                        contentDescription = null,
+                        tint = MmyrvPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Backend Server URL",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = MmyrvTextDark
+                    )
+                }
             },
             text = {
                 Column {
                     Text(
-                        text = "Enter laptop/backend URL. Example:\n• USB Cable (ADB): http://127.0.0.1:8000/\n• Wi-Fi/Hotspot: http://192.168.0.222:8000/",
+                        text = "Backend Server URL (Vercel Cloud is default):\n• Cloud: https://lab-portal-one.vercel.app/\n• Local IP: http://10.87.254.19:8000/",
                         fontSize = 12.sp,
                         color = MmyrvTextMuted,
                         lineHeight = 16.sp
@@ -126,11 +135,18 @@ fun LoginScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = { serverUrlInput = "http://127.0.0.1:8000/" },
+                            onClick = { serverUrlInput = ApiConstants.VERCEL_URL },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("USB (ADB)", fontSize = 11.sp)
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_cloud),
+                                contentDescription = null,
+                                tint = MmyrvPrimary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text("Vercel", fontSize = 11.sp)
                         }
                         OutlinedButton(
                             onClick = { serverUrlInput = "http://10.87.254.19:8000/" },

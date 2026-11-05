@@ -7,18 +7,22 @@ object ApiConstants {
     private const val PREFS_NAME = "lab_portal_settings"
     private const val KEY_SERVER_URL = "key_server_url"
 
-    // Default URLs
+    // Official Production Cloud Backend on Vercel
+    const val VERCEL_URL = "https://lab-portal-one.vercel.app/"
+    const val VERCEL_DIRECT_URL = "https://lab-portal-fwmrimn0q-adarsh-9213.vercel.app/"
+
+    // Local Fallback URLs
     const val USB_ADB_URL = "http://127.0.0.1:8000/"
     const val HOTSPOT_WIFI_URL = "http://10.87.254.19:8000/"
 
-    private var currentUrl: String = USB_ADB_URL
+    private var currentUrl: String = VERCEL_URL
 
     fun init(context: Context) {
         try {
             val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            currentUrl = prefs.getString(KEY_SERVER_URL, USB_ADB_URL) ?: USB_ADB_URL
+            currentUrl = prefs.getString(KEY_SERVER_URL, VERCEL_URL) ?: VERCEL_URL
         } catch (_: Exception) {
-            currentUrl = USB_ADB_URL
+            currentUrl = VERCEL_URL
         }
     }
 

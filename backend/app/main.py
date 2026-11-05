@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import get_database
 from app.routes.auth import router as auth_router
+from app.routes.admin import router as admin_router
 
 app = FastAPI(
     title="MMYRV LabPortal API",
@@ -18,8 +19,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include Auth Router
+# Include Routers
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 @app.on_event("startup")
 def startup_db_client():
@@ -36,7 +38,8 @@ def startup_db_client():
                     "email": "admin@mmyrv.edu.in",
                     "rollNo": "STAFF-ADM-01",
                     "role": "Admin",
-                    "password": hp("admin123")
+                    "password": hp("admin123"),
+                    "isApproved": True
                 })
                 print("[INIT] Created demo Admin user")
             # Ensure demo Student
@@ -46,7 +49,8 @@ def startup_db_client():
                     "email": "student@mmyrv.edu.in",
                     "rollNo": "MMYRV/2026/042",
                     "role": "Student",
-                    "password": hp("student123")
+                    "password": hp("student123"),
+                    "isApproved": True
                 })
                 print("[INIT] Created demo Student user")
         except Exception as e:

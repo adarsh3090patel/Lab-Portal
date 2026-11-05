@@ -1,7 +1,14 @@
 package com.example.labportal.ui.screens
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,14 +18,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -28,17 +38,22 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -47,18 +62,22 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.labportal.R
 import com.example.labportal.ui.components.BackgroundCurves
 import com.example.labportal.ui.components.PortalHeader
+import com.example.labportal.ui.theme.AppFontFamily
 import com.example.labportal.ui.theme.LabPortalTheme
 import com.example.labportal.ui.theme.MmyrvBadgeBg
 import com.example.labportal.ui.theme.MmyrvBorder
 import com.example.labportal.ui.theme.MmyrvPrimary
 import com.example.labportal.ui.theme.MmyrvTextDark
 import com.example.labportal.ui.theme.MmyrvTextMuted
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 enum class UserRole(val label: String) {
     STUDENT("Student"),
@@ -68,7 +87,17 @@ enum class UserRole(val label: String) {
 
 @Composable
 fun RegisterScreen(
-    onRegisterClick: (name: String, email: String, rollNo: String, role: String, password: String) -> Unit = { _, _, _, _, _ -> },
+    onRegisterClick: (
+        name: String,
+        email: String,
+        rollNo: String,
+        role: String,
+        password: String,
+        programme: String,
+        semester: String,
+        phone: String,
+        faceEnrolled: Boolean
+    ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
     onNavigateToLogin: () -> Unit = {},
     isLoading: Boolean = false,
     errorMessage: String? = null
@@ -76,10 +105,18 @@ fun RegisterScreen(
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var rollNo by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
     var selectedRole by remember { mutableStateOf(UserRole.STUDENT) }
+    var programme by remember { mutableStateOf("B.Sc. (Computer Science)") }
+    var semester by remember { mutableStateOf("Semester V") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var agreeTerms by remember { mutableStateOf(false) }
+
+    // Biometric Face Enrollment State
+    var faceEnrolled by remember { mutableStateOf(false) }
+    var showFaceScanModal by remember { mutableStateOf(false) }
+    var localValidationMsg by remember { mutableStateOf<String?>(null) }
 
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
@@ -87,12 +124,14 @@ fun RegisterScreen(
     val focusManager = LocalFocusManager.current
     val scrollState = rememberScrollState()
 
+    val availableProgrammes = listOf("B.Sc. (Computer Science)", "BCA", "B.Tech CSE", "M.Sc. IT")
+    val availableSemesters = listOf("Semester I", "Semester III", "Semester V", "Semester VII")
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
     ) {
-        // Cohesive background curves
         BackgroundCurves()
 
         Column(
@@ -150,12 +189,14 @@ fun RegisterScreen(
                                 text = "Create Account",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
                                 color = MmyrvTextDark
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Register for campus lab access",
+                                text = "Register for campus lab & biometric access",
                                 fontSize = 13.sp,
+                                fontFamily = AppFontFamily,
                                 color = MmyrvTextMuted
                             )
                         }
@@ -168,6 +209,7 @@ fun RegisterScreen(
                         text = "I am a:",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
+                        fontFamily = AppFontFamily,
                         color = MmyrvTextDark
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -192,6 +234,7 @@ fun RegisterScreen(
                                 Text(
                                     text = role.label,
                                     fontSize = 12.sp,
+                                    fontFamily = AppFontFamily,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) Color.White else MmyrvTextMuted
                                 )
@@ -201,20 +244,31 @@ fun RegisterScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Optional Error Message
-                    if (!errorMessage.isNullOrEmpty()) {
-                        Text(
-                            text = errorMessage,
-                            color = Color(0xFFEF4444),
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                    // Error Message Display
+                    val activeError = localValidationMsg ?: errorMessage
+                    if (!activeError.isNullOrEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFEF2F2))
+                                .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = activeError,
+                                color = Color(0xFFDC2626),
+                                fontSize = 12.sp,
+                                fontFamily = AppFontFamily
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
 
                     // Full Name
                     OutlinedTextField(
                         value = fullName,
-                        onValueChange = { fullName = it },
+                        onValueChange = { fullName = it; localValidationMsg = null },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Full Name", color = Color(0xFF94A3B8), fontSize = 14.sp) },
                         leadingIcon = {
@@ -242,9 +296,9 @@ fun RegisterScreen(
                     // University Email
                     OutlinedTextField(
                         value = email,
-                        onValueChange = { email = it },
+                        onValueChange = { email = it; localValidationMsg = null },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("University Email", color = Color(0xFF94A3B8), fontSize = 14.sp) },
+                        placeholder = { Text("University Email (e.g. adarsh@mmyrv.ac.in)", color = Color(0xFF94A3B8), fontSize = 14.sp) },
                         leadingIcon = {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_email),
@@ -270,11 +324,11 @@ fun RegisterScreen(
                     // Roll / Scholar / Employee No
                     OutlinedTextField(
                         value = rollNo,
-                        onValueChange = { rollNo = it },
+                        onValueChange = { rollNo = it; localValidationMsg = null },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = {
                             Text(
-                                text = if (selectedRole == UserRole.STUDENT) "Enrollment / Roll No." else "Faculty / Staff ID",
+                                text = if (selectedRole == UserRole.STUDENT) "Enrollment / Roll No. (e.g. 25CS0101)" else "Faculty / Staff ID",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 14.sp
                             )
@@ -301,10 +355,239 @@ fun RegisterScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    // Contact Phone
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it; localValidationMsg = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Contact Phone (+91 98765 43210)", color = Color(0xFF94A3B8), fontSize = 14.sp) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_phone),
+                                contentDescription = "Phone Icon",
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MmyrvPrimary,
+                            unfocusedBorderColor = MmyrvBorder,
+                            focusedContainerColor = Color(0xFFFAFAFC),
+                            unfocusedContainerColor = Color(0xFFFAFAFC)
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                    )
+
+                    // Additional Student-Specific Academic Fields
+                    if (selectedRole == UserRole.STUDENT) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "Degree Programme",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvTextDark
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            availableProgrammes.take(2).forEach { prog ->
+                                val isSelected = programme == prog
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC))
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (isSelected) MmyrvPrimary else Color(0xFFE2E8F0),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable { programme = prog }
+                                        .padding(vertical = 7.dp, horizontal = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = prog,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        fontFamily = AppFontFamily,
+                                        color = if (isSelected) MmyrvPrimary else MmyrvTextMuted,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Current Semester",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvTextDark
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            availableSemesters.forEach { sem ->
+                                val isSelected = semester == sem
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) Color(0xFFEEF2FF) else Color(0xFFF8FAFC))
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (isSelected) MmyrvPrimary else Color(0xFFE2E8F0),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable { semester = sem }
+                                        .padding(vertical = 7.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = sem.replace("Semester ", "Sem "),
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        fontFamily = AppFontFamily,
+                                        color = if (isSelected) MmyrvPrimary else MmyrvTextMuted,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // ==========================================
+                    // BIOMETRIC FACIAL RECOGNITION ENROLLMENT CARD
+                    // ==========================================
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (faceEnrolled) Color(0xFFF0FDF4) else Color(0xFFF8FAFC)
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (faceEnrolled) Color(0xFF86EFAC) else Color(0xFFE2E8F0)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (faceEnrolled) Color(0xFFDCFCE7) else Color(0xFFEEF2FF)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (faceEnrolled) R.drawable.ic_check_circle else R.drawable.ic_face_recognition
+                                        ),
+                                        contentDescription = "Facial Recognition",
+                                        tint = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Facial Recognition ID",
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = AppFontFamily,
+                                            color = MmyrvTextDark
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (faceEnrolled) Color(0xFFDCFCE7) else Color(0xFFFEF3C7))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = if (faceEnrolled) "Enrolled" else "Mandatory",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (faceEnrolled) Color(0xFF15803D) else Color(0xFFB45309)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = if (faceEnrolled)
+                                            "Face biometric enrolled for Admin ID verification & lab attendance."
+                                        else
+                                            "Admin verifies your photo before approving. Required for attendance.",
+                                        fontSize = 11.5.sp,
+                                        fontFamily = AppFontFamily,
+                                        color = MmyrvTextMuted,
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            OutlinedButton(
+                                onClick = { showFaceScanModal = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(38.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
+                                )
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_face_recognition),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (faceEnrolled) "Re-Scan Biometric Face" else "Scan & Enroll Face ID Now",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = AppFontFamily
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     // Password
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it },
+                        onValueChange = { password = it; localValidationMsg = null },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Password", color = Color(0xFF94A3B8), fontSize = 14.sp) },
                         leadingIcon = {
@@ -345,7 +628,7 @@ fun RegisterScreen(
                     // Confirm Password
                     OutlinedTextField(
                         value = confirmPassword,
-                        onValueChange = { confirmPassword = it },
+                        onValueChange = { confirmPassword = it; localValidationMsg = null },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Confirm Password", color = Color(0xFF94A3B8), fontSize = 14.sp) },
                         leadingIcon = {
@@ -381,7 +664,6 @@ fun RegisterScreen(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 focusManager.clearFocus()
-                                onRegisterClick(fullName, email, rollNo, selectedRole.label, password)
                             }
                         )
                     )
@@ -406,8 +688,9 @@ fun RegisterScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "I agree to the University Lab Guidelines",
+                            text = "I agree to the University Lab Guidelines & Biometric Policy",
                             fontSize = 12.sp,
+                            fontFamily = AppFontFamily,
                             color = MmyrvTextMuted
                         )
                     }
@@ -418,7 +701,34 @@ fun RegisterScreen(
                     Button(
                         onClick = {
                             focusManager.clearFocus()
-                            onRegisterClick(fullName, email, rollNo, selectedRole.label, password)
+                            if (fullName.isBlank() || email.isBlank() || rollNo.isBlank() || password.isBlank()) {
+                                localValidationMsg = "Please fill in all mandatory fields."
+                                return@Button
+                            }
+                            if (password != confirmPassword) {
+                                localValidationMsg = "Passwords do not match."
+                                return@Button
+                            }
+                            if (selectedRole == UserRole.STUDENT && !faceEnrolled) {
+                                localValidationMsg = "Facial Biometric registration is required. Please click 'Scan & Enroll Face ID Now' above."
+                                return@Button
+                            }
+                            if (!agreeTerms) {
+                                localValidationMsg = "Please accept the university lab guidelines."
+                                return@Button
+                            }
+                            localValidationMsg = null
+                            onRegisterClick(
+                                fullName,
+                                email,
+                                rollNo,
+                                selectedRole.label,
+                                password,
+                                programme,
+                                semester,
+                                phone.ifBlank { "+91 98765 43210" },
+                                faceEnrolled
+                            )
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -446,9 +756,10 @@ fun RegisterScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Register",
-                                    fontSize = 16.sp,
+                                    text = "Submit for Admin Approval",
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
                                     color = Color.White
                                 )
                             }
@@ -466,12 +777,14 @@ fun RegisterScreen(
                         Text(
                             text = "Already have an account? ",
                             fontSize = 13.sp,
+                            fontFamily = AppFontFamily,
                             color = MmyrvTextMuted
                         )
                         Text(
                             text = "Login",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
+                            fontFamily = AppFontFamily,
                             color = MmyrvPrimary,
                             modifier = Modifier.clickable { onNavigateToLogin() }
                         )
@@ -482,6 +795,211 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+
+    // Modal Dialog for Facial Biometric Registration
+    if (showFaceScanModal) {
+        FaceEnrollmentModal(
+            studentName = fullName.ifBlank { "Student" },
+            onFaceCaptured = {
+                faceEnrolled = true
+                showFaceScanModal = false
+                localValidationMsg = null
+            },
+            onDismiss = { showFaceScanModal = false }
+        )
+    }
+}
+
+@Composable
+private fun FaceEnrollmentModal(
+    studentName: String,
+    onFaceCaptured: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var isScanning by remember { mutableStateOf(false) }
+    var scanCompleted by remember { mutableStateOf(false) }
+    var scanProgress by remember { mutableStateOf(0) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "scanner")
+    val scanLineOffset by infiniteTransition.animateFloat(
+        initialValue = -75f,
+        targetValue = 75f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scanLine"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_face_recognition),
+                    contentDescription = null,
+                    tint = MmyrvPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Biometric Face Capture",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    fontFamily = AppFontFamily,
+                    color = MmyrvTextDark
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Initial identity enrollment for Lab Administrator verification.",
+                    fontSize = 12.sp,
+                    fontFamily = AppFontFamily,
+                    color = MmyrvTextMuted,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Simulated High-Tech Camera Viewfinder Frame
+                Box(
+                    modifier = Modifier
+                        .size(190.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0xFF0F172A))
+                        .border(
+                            width = 2.5.dp,
+                            color = if (scanCompleted) Color(0xFF10B981) else MmyrvPrimary,
+                            shape = RoundedCornerShape(24.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Face silhouette placeholder
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_face_recognition),
+                        contentDescription = "Face Frame",
+                        tint = Color.White.copy(alpha = if (scanCompleted) 0.95f else 0.45f),
+                        modifier = Modifier.size(96.dp)
+                    )
+
+                    // Animated Laser Scanning Line
+                    if (isScanning && !scanCompleted) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .offset(y = scanLineOffset.dp)
+                                .background(
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color(0xFF38BDF8),
+                                            Color.White,
+                                            Color(0xFF38BDF8),
+                                            Color.Transparent
+                                        )
+                                    )
+                                )
+                        )
+                    }
+
+                    // Success Overlay
+                    if (scanCompleted) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_check_circle),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = when {
+                        scanCompleted -> "Face successfully enrolled! AI biometric landmarks saved for admin verification."
+                        isScanning -> "Analyzing 68 facial landmark coordinates ($scanProgress%)..."
+                        else -> "Position your face squarely in the viewfinder frame with proper lighting."
+                    },
+                    fontSize = 12.sp,
+                    fontFamily = AppFontFamily,
+                    color = if (scanCompleted) Color(0xFF10B981) else MmyrvTextDark,
+                    fontWeight = if (scanCompleted) FontWeight.Bold else FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Enrolling profile for: $studentName",
+                    fontSize = 11.5.sp,
+                    fontFamily = AppFontFamily,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+        },
+        confirmButton = {
+            if (!scanCompleted) {
+                Button(
+                    onClick = {
+                        isScanning = true
+                        coroutineScope.launch {
+                            for (p in 1..5) {
+                                delay(350)
+                                scanProgress = p * 20
+                            }
+                            delay(200)
+                            isScanning = false
+                            scanCompleted = true
+                        }
+                    },
+                    enabled = !isScanning,
+                    colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    if (isScanning) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Scanning...", fontFamily = AppFontFamily)
+                    } else {
+                        Text(text = "Start Face Capture", fontFamily = AppFontFamily)
+                    }
+                }
+            } else {
+                Button(
+                    onClick = onFaceCaptured,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(text = "Confirm Face ID", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Cancel", fontFamily = AppFontFamily, color = MmyrvTextMuted)
+            }
+        }
+    )
 }
 
 @Preview(showBackground = true, heightDp = 800)

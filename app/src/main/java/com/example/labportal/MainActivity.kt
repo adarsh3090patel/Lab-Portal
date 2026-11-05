@@ -24,6 +24,7 @@ import com.example.labportal.network.RegisterRequest
 import com.example.labportal.ui.screens.DashboardScreen
 import com.example.labportal.ui.screens.LoginScreen
 import com.example.labportal.ui.screens.RegisterScreen
+import com.example.labportal.ui.screens.RegistrationPendingScreen
 import com.example.labportal.ui.theme.LabPortalTheme
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -31,6 +32,7 @@ import org.json.JSONObject
 enum class AppScreen {
     LOGIN,
     REGISTER,
+    REGISTRATION_PENDING,
     DASHBOARD
 }
 
@@ -59,6 +61,7 @@ fun MainAppNavigation() {
 
     var currentScreen by remember { mutableStateOf(AppScreen.LOGIN) }
     var loggedInUser by remember { mutableStateOf<UserData?>(null) }
+    var pendingStudentData by remember { mutableStateOf<UserData?>(null) }
 
     // Loading & Error States
     var isLoading by remember { mutableStateOf(false) }
@@ -97,7 +100,13 @@ fun MainAppNavigation() {
                                     fullName = userDto.fullName,
                                     email = userDto.email,
                                     rollNo = userDto.rollNo,
-                                    role = userDto.role
+                                    role = userDto.role,
+                                    phone = userDto.phone,
+                                    programme = userDto.programme,
+                                    semester = userDto.semester,
+                                    faceEnrolled = userDto.faceEnrolled,
+                                    facePhotoUrl = userDto.facePhotoUrl,
+                                    profileCompletion = userDto.profileCompletion
                                 )
                                 Toast.makeText(context, "Welcome ${userDto.fullName} (${userDto.role})", Toast.LENGTH_SHORT).show()
                                 currentScreen = AppScreen.DASHBOARD
@@ -135,7 +144,7 @@ fun MainAppNavigation() {
             RegisterScreen(
                 isLoading = isLoading,
                 errorMessage = registerError,
-                onRegisterClick = { name, email, rollNo, role, password ->
+                onRegisterClick = { name, email, rollNo, role, password, programme, semester, phone, faceEnrolled ->
                     val cleanName = name.trim()
                     val cleanEmail = email.trim().lowercase()
                     val cleanRoll = rollNo.trim()
@@ -158,7 +167,11 @@ fun MainAppNavigation() {
                                     email = cleanEmail,
                                     rollNo = cleanRoll.ifBlank { "N/A" },
                                     role = role,
-                                    password = cleanPass
+                                    password = cleanPass,
+                                    programme = programme,
+                                    semester = semester,
+                                    phone = phone,
+                                    faceEnrolled = faceEnrolled
                                 )
                             )
 
@@ -166,14 +179,38 @@ fun MainAppNavigation() {
 
                             if (response.isSuccessful && response.body() != null) {
                                 val userDto = response.body()!!.user
-                                loggedInUser = UserData(
-                                    fullName = userDto.fullName,
-                                    email = userDto.email,
-                                    rollNo = userDto.rollNo,
-                                    role = userDto.role
-                                )
-                                Toast.makeText(context, "Registration Successful!", Toast.LENGTH_SHORT).show()
-                                currentScreen = AppScreen.DASHBOARD
+                                val isApproved = response.body()!!.isApproved
+
+                                if (!isApproved && !userDto.role.equals("Admin", ignoreCase = true)) {
+                                    pendingStudentData = UserData(
+                                        fullName = userDto.fullName,
+                                        email = userDto.email,
+                                        rollNo = userDto.rollNo,
+                                        role = userDto.role,
+                                        programme = userDto.programme,
+                                        semester = userDto.semester,
+                                        phone = userDto.phone,
+                                        faceEnrolled = userDto.faceEnrolled,
+                                        facePhotoUrl = userDto.facePhotoUrl,
+                                        profileCompletion = userDto.profileCompletion
+                                    )
+                                    currentScreen = AppScreen.REGISTRATION_PENDING
+                                } else {
+                                    loggedInUser = UserData(
+                                        fullName = userDto.fullName,
+                                        email = userDto.email,
+                                        rollNo = userDto.rollNo,
+                                        role = userDto.role,
+                                        programme = userDto.programme,
+                                        semester = userDto.semester,
+                                        phone = userDto.phone,
+                                        faceEnrolled = userDto.faceEnrolled,
+                                        facePhotoUrl = userDto.facePhotoUrl,
+                                        profileCompletion = userDto.profileCompletion
+                                    )
+                                    Toast.makeText(context, "Registration Successful!", Toast.LENGTH_SHORT).show()
+                                    currentScreen = AppScreen.DASHBOARD
+                                }
                             } else {
                                 val errorBody = response.errorBody()?.string()
                                 val message = try {
@@ -191,6 +228,23 @@ fun MainAppNavigation() {
                     }
                 },
                 onNavigateToLogin = {
+                    loginError = null
+                    registerError = null
+                    currentScreen = AppScreen.LOGIN
+                }
+            )
+        }
+
+        AppScreen.REGISTRATION_PENDING -> {
+            RegistrationPendingScreen(
+                fullName = pendingStudentData?.fullName ?: "Student",
+                email = pendingStudentData?.email ?: "",
+                rollNo = pendingStudentData?.rollNo ?: "N/A",
+                role = pendingStudentData?.role ?: "Student",
+                programme = pendingStudentData?.programme ?: "B.Sc. (Computer Science)",
+                semester = pendingStudentData?.semester ?: "Semester V",
+                phone = pendingStudentData?.phone ?: "+91 98765 43210",
+                onBackToLogin = {
                     loginError = null
                     registerError = null
                     currentScreen = AppScreen.LOGIN

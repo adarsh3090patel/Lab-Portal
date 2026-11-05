@@ -22,7 +22,12 @@ data class RegisterRequest(
     val email: String,
     val rollNo: String,
     val role: String,
-    val password: String
+    val password: String,
+    val programme: String = "B.Sc. (Computer Science)",
+    val semester: String = "Semester V",
+    val phone: String = "+91 98765 43210",
+    val faceEnrolled: Boolean = true,
+    val facePhotoUrl: String = ""
 )
 
 data class UserDto(
@@ -30,12 +35,39 @@ data class UserDto(
     val fullName: String,
     val email: String,
     val rollNo: String,
-    val role: String
+    val role: String,
+    val programme: String = "B.Sc. (Computer Science)",
+    val semester: String = "Semester V",
+    val phone: String = "+91 98765 43210",
+    val faceEnrolled: Boolean = true,
+    val facePhotoUrl: String = "",
+    val profileCompletion: Int = 80
 )
 
 data class AuthResponse(
     val message: String,
+    @SerializedName("isApproved") val isApproved: Boolean = true,
     val user: UserDto
+)
+
+data class StudentApprovalDto(
+    val id: String,
+    val fullName: String,
+    val email: String,
+    val rollNo: String,
+    val role: String,
+    val programme: String = "B.Sc. (Computer Science)",
+    val semester: String = "Semester V",
+    val phone: String = "+91 98765 43210",
+    val faceEnrolled: Boolean = true,
+    val facePhotoUrl: String = "",
+    @SerializedName("isApproved") val isApproved: Boolean = false,
+    val createdAt: String? = null
+)
+
+data class SimpleActionResponse(
+    val message: String,
+    val success: Boolean = true
 )
 
 data class HealthResponse(
@@ -49,6 +81,15 @@ interface AuthApiService {
 
     @POST("api/auth/register")
     suspend fun register(@Body body: RegisterRequest): Response<AuthResponse>
+
+    @GET("api/admin/students")
+    suspend fun getStudentsForApproval(): Response<List<StudentApprovalDto>>
+
+    @POST("api/admin/approve-student/{id}")
+    suspend fun approveStudent(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+
+    @POST("api/admin/reject-student/{id}")
+    suspend fun rejectStudent(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
 
     @GET("health")
     suspend fun healthCheck(): Response<HealthResponse>

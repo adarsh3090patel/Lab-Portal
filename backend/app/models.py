@@ -7,6 +7,11 @@ class UserRegisterRequest(BaseModel):
     rollNo: str
     role: str = "Student"
     password: str
+    programme: Optional[str] = "B.Sc. (Computer Science)"
+    semester: Optional[str] = "Semester V"
+    phone: Optional[str] = "+91 98765 43210"
+    faceEnrolled: Optional[bool] = True
+    facePhotoUrl: Optional[str] = ""
 
 class UserLoginRequest(BaseModel):
     email: str
@@ -18,3 +23,8 @@ class UserResponse(BaseModel):
     email: str
     rollNo: str
     role: str
+    programme: Optional[str] = "B.Sc. (Computer Science)"
+    semester: Optional[str] = "Semester V"
+    phone: Optional[str] = "+91 98765 43210"
+    faceEnrolled: Optional[bool] = True
+    profileCompletion: Optional[int] = 80
