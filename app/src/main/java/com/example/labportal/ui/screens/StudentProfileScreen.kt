@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +35,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -81,6 +84,7 @@ fun StudentProfileScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var isEditMode by remember { mutableStateOf(false) }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var showLiveFaceScanner by remember { mutableStateOf(false) }
     var showFullBiometricDialog by remember { mutableStateOf(false) }
@@ -94,6 +98,7 @@ fun StudentProfileScreen(
         mutableStateOf(user.facePhotoUrl)
     }
 
+    var fullNameInput by remember { mutableStateOf(user.fullName) }
     var phoneInput by remember { mutableStateOf(user.phone) }
     var dobInput by remember { mutableStateOf(user.dob) }
     var bloodGroupInput by remember { mutableStateOf(user.bloodGroup) }
@@ -112,7 +117,8 @@ fun StudentProfileScreen(
     // Persist updates to MongoDB via backend API
     fun saveProfileToDatabase(
         newProfilePhoto: String? = null,
-        newBiometricPhoto: String? = null
+        newBiometricPhoto: String? = null,
+        onSuccess: (() -> Unit)? = null
     ) {
         val targetProfile = newProfilePhoto ?: currentProfilePhoto
         val targetBiometric = newBiometricPhoto ?: currentBiometricPhoto
@@ -122,6 +128,7 @@ fun StudentProfileScreen(
         coroutineScope.launch {
             try {
                 val req = ProfileUpdateRequest(
+                    fullName = fullNameInput.trim().ifBlank { user.fullName },
                     phone = phoneInput.trim(),
                     dob = dobInput.trim(),
                     bloodGroup = bloodGroupInput.trim(),
@@ -138,6 +145,7 @@ fun StudentProfileScreen(
                 if (response.isSuccessful && response.body() != null) {
                     val updatedDto = response.body()!!.user
                     val updatedUser = user.copy(
+                        fullName = updatedDto.fullName,
                         phone = updatedDto.phone,
                         dob = updatedDto.dob,
                         bloodGroup = updatedDto.bloodGroup,
@@ -150,14 +158,17 @@ fun StudentProfileScreen(
                     )
                     currentProfilePhoto = updatedDto.profilePhotoUrl
                     currentBiometricPhoto = updatedDto.facePhotoUrl
+                    fullNameInput = updatedDto.fullName
                     onProfileUpdated(updatedUser)
                     isEditMode = false
+                    showEditProfileDialog = false
+                    onSuccess?.invoke()
                     Toast.makeText(
                         context,
                         if (updatedDto.profileCompletion >= 100)
-                            "Profile 100% complete! Changes saved to database."
+                            "Profile 100% complete! Database updated successfully."
                         else
-                            "Profile updated in database.",
+                            "Profile saved to database successfully.",
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
@@ -167,6 +178,7 @@ fun StudentProfileScreen(
                 isSaving = false
                 val isComplete = dobInput.isNotBlank() && bloodGroupInput.isNotBlank() && addressInput.isNotBlank()
                 val updatedUser = user.copy(
+                    fullName = fullNameInput.trim().ifBlank { user.fullName },
                     phone = phoneInput.trim(),
                     dob = dobInput.trim(),
                     bloodGroup = bloodGroupInput.trim(),
@@ -179,6 +191,8 @@ fun StudentProfileScreen(
                 )
                 onProfileUpdated(updatedUser)
                 isEditMode = false
+                showEditProfileDialog = false
+                onSuccess?.invoke()
                 Toast.makeText(context, "Saved offline.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -217,16 +231,20 @@ fun StudentProfileScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF8FAFC))
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 18.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            // 1. Top Bar: Back Button, Title/Subtitle, Edit Profile Button
+            // 1. Top Bar: Back Button, Title/Subtitle, Edit Profile Button (Fully below notch/status bar)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -268,6 +286,7 @@ fun StudentProfileScreen(
                     )
                 }
 
+                // Edit Profile Button (Opens interactive edit dialog and toggles mode)
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = if (isEditMode) MmyrvPrimary else Color(0xFFEEF2FF),
@@ -276,7 +295,7 @@ fun StudentProfileScreen(
                         if (isEditMode) {
                             saveProfileToDatabase()
                         } else {
-                            isEditMode = true
+                            showEditProfileDialog = true
                         }
                     }
                 ) {
@@ -318,7 +337,42 @@ fun StudentProfileScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            // Edit Mode Alert Banner (when edit mode active)
+            if (isEditMode) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2FF)),
+                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_edit),
+                            contentDescription = null,
+                            tint = MmyrvPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Editing Mode Active • Modify fields and tap Save.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { isEditMode = false }) {
+                            Text("Done", fontWeight = FontWeight.Bold, color = MmyrvPrimary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 2. Student Hero Card: Profile Photo Avatar + Information
             Card(
@@ -386,7 +440,7 @@ fun StudentProfileScreen(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = user.fullName,
+                        text = fullNameInput.ifBlank { user.fullName },
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = AppFontFamily,
@@ -748,23 +802,34 @@ fun StudentProfileScreen(
 
             // 5. Section: Contact & Personal Details
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_person),
-                    contentDescription = null,
-                    tint = MmyrvTextDark,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Contact & Personal Details",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = AppFontFamily,
-                    color = MmyrvTextDark
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_person),
+                        contentDescription = null,
+                        tint = MmyrvTextDark,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Contact & Personal Details",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = AppFontFamily,
+                        color = MmyrvTextDark
+                    )
+                }
+
+                TextButton(onClick = { showEditProfileDialog = true }) {
+                    Icon(painter = painterResource(id = R.drawable.ic_edit), contentDescription = null, tint = MmyrvPrimary, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Edit Details", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MmyrvPrimary)
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -799,7 +864,7 @@ fun StudentProfileScreen(
                         ProfileRecordRow(
                             iconRes = R.drawable.ic_phone,
                             label = "Phone Number",
-                            value = if (user.phone.isNotBlank()) user.phone else "Not provided"
+                            value = if (phoneInput.isNotBlank()) phoneInput else if (user.phone.isNotBlank()) user.phone else "Not provided"
                         )
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -816,7 +881,7 @@ fun StudentProfileScreen(
                         ProfileRecordRow(
                             iconRes = R.drawable.ic_calendar_today,
                             label = "Date of Birth (DOB)",
-                            value = if (user.dob.isNotBlank()) user.dob else "Not provided (tap Edit Profile)"
+                            value = if (dobInput.isNotBlank()) dobInput else if (user.dob.isNotBlank()) user.dob else "Not provided (tap Edit Details)"
                         )
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -833,7 +898,7 @@ fun StudentProfileScreen(
                         ProfileRecordRow(
                             iconRes = R.drawable.ic_water_drop,
                             label = "Blood Group",
-                            value = if (user.bloodGroup.isNotBlank()) user.bloodGroup else "Not provided (tap Edit Profile)"
+                            value = if (bloodGroupInput.isNotBlank()) bloodGroupInput else if (user.bloodGroup.isNotBlank()) user.bloodGroup else "Not provided (tap Edit Details)"
                         )
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -850,7 +915,7 @@ fun StudentProfileScreen(
                         ProfileRecordRow(
                             iconRes = R.drawable.ic_location,
                             label = "Permanent Address",
-                            value = if (user.permanentAddress.isNotBlank()) user.permanentAddress else "Not provided (tap Edit Profile)"
+                            value = if (addressInput.isNotBlank()) addressInput else if (user.permanentAddress.isNotBlank()) user.permanentAddress else "Not provided (tap Edit Details)"
                         )
                     }
                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -872,13 +937,12 @@ fun StudentProfileScreen(
                             placeholder = "+91 98765 00000"
                         )
                     } else {
+                        val gName = guardianNameInput.ifBlank { user.guardianName }
+                        val gPhone = guardianPhoneInput.ifBlank { user.guardianPhone }
                         ProfileRecordRow(
                             iconRes = R.drawable.ic_group,
                             label = "Guardian / Parent Details",
-                            value = if (user.guardianName.isNotBlank())
-                                "${user.guardianName} • ${user.guardianPhone}"
-                            else
-                                "Not provided (tap Edit Profile)"
+                            value = if (gName.isNotBlank()) "$gName • $gPhone" else "Not provided (tap Edit Details)"
                         )
                     }
                 }
@@ -921,7 +985,204 @@ fun StudentProfileScreen(
             Spacer(modifier = Modifier.height(28.dp))
         }
 
-        // 6. Avatar Selection Dialog (Gallery / Camera)
+        // 6. Interactive Edit Profile Modal Dialog (Immediately pops up on tapping Edit Profile)
+        if (showEditProfileDialog) {
+            Dialog(onDismissRequest = { showEditProfileDialog = false }) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .clip(RoundedCornerShape(24.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(22.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFEEF2FF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_edit),
+                                        contentDescription = null,
+                                        tint = MmyrvPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Edit Profile Information",
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = AppFontFamily,
+                                        fontSize = 16.sp,
+                                        color = MmyrvTextDark
+                                    )
+                                    Text(
+                                        text = "Saved directly to database",
+                                        fontSize = 11.sp,
+                                        fontFamily = AppFontFamily,
+                                        color = MmyrvTextMuted
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { showEditProfileDialog = false },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_close),
+                                    contentDescription = "Close",
+                                    tint = MmyrvTextMuted,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Full Name
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_person,
+                            label = "Full Name",
+                            value = fullNameInput,
+                            onValueChange = { fullNameInput = it },
+                            placeholder = "e.g. Adarsh Kumar"
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Phone Number
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_phone,
+                            label = "Phone Number",
+                            value = phoneInput,
+                            onValueChange = { phoneInput = it },
+                            placeholder = "+91 98765 43210"
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // DOB
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_calendar_today,
+                            label = "Date of Birth (DOB)",
+                            value = dobInput,
+                            onValueChange = { dobInput = it },
+                            placeholder = "DD/MM/YYYY (e.g. 15/08/2004)"
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Blood Group
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_water_drop,
+                            label = "Blood Group",
+                            value = bloodGroupInput,
+                            onValueChange = { bloodGroupInput = it },
+                            placeholder = "e.g. B+, O+, A+, AB+"
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Permanent Address
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_location,
+                            label = "Permanent Address",
+                            value = addressInput,
+                            onValueChange = { addressInput = it },
+                            placeholder = "Ayodhya, Uttar Pradesh, 224001"
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Guardian Name
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_group,
+                            label = "Guardian / Parent Name",
+                            value = guardianNameInput,
+                            onValueChange = { guardianNameInput = it },
+                            placeholder = "Parent Full Name"
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Guardian Phone
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_phone,
+                            label = "Guardian Phone Number",
+                            value = guardianPhoneInput,
+                            onValueChange = { guardianPhoneInput = it },
+                            placeholder = "+91 98765 00000"
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { showEditProfileDialog = false },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                            ) {
+                                Text("Cancel", color = MmyrvTextDark, fontFamily = AppFontFamily)
+                            }
+
+                            Button(
+                                onClick = {
+                                    saveProfileToDatabase(onSuccess = { showEditProfileDialog = false })
+                                },
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .height(44.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                                enabled = !isSaving
+                            ) {
+                                if (isSaving) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Saving...", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
+                                } else {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_check_circle),
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 7. Avatar Selection Dialog (Gallery / Camera)
         if (showAvatarPickerOptions) {
             AlertDialog(
                 onDismissRequest = { showAvatarPickerOptions = false },
@@ -982,7 +1243,7 @@ fun StudentProfileScreen(
             )
         }
 
-        // 7. High-Resolution Biometric Template Inspection Modal
+        // 8. High-Resolution Biometric Template Inspection Modal
         if (showFullBiometricDialog) {
             Dialog(onDismissRequest = { showFullBiometricDialog = false }) {
                 Card(
@@ -1053,7 +1314,7 @@ fun StudentProfileScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Text(
-                            text = user.fullName,
+                            text = fullNameInput.ifBlank { user.fullName },
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = AppFontFamily,
@@ -1104,7 +1365,7 @@ fun StudentProfileScreen(
             }
         }
 
-        // 8. Screen-Lock Live Front Camera Biometric Scanner Modal
+        // 9. Screen-Lock Live Front Camera Biometric Scanner Modal
         if (showLiveFaceScanner) {
             LiveFaceScannerModal(
                 title = "Screen-Lock Biometric Scanner",
@@ -1182,14 +1443,14 @@ private fun EditableRecordField(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(vertical = 4.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 painter = painterResource(id = iconRes),
                 contentDescription = null,
                 tint = MmyrvPrimary,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(15.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
@@ -1200,11 +1461,11 @@ private fun EditableRecordField(
                 color = MmyrvTextDark
             )
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            placeholder = { Text(placeholder, fontSize = 13.sp, color = Color(0xFF94A3B8), fontFamily = AppFontFamily) },
+            placeholder = { Text(placeholder, fontSize = 12.5.sp, color = Color(0xFF94A3B8), fontFamily = AppFontFamily) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(10.dp),
             colors = OutlinedTextFieldDefaults.colors(
