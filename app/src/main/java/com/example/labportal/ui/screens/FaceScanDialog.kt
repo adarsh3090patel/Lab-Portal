@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.labportal.R
 import com.example.labportal.data.model.UserData
+import com.example.labportal.ui.components.LiveFaceScannerModal
 import com.example.labportal.ui.theme.AppFontFamily
 import com.example.labportal.ui.theme.MmyrvPrimary
 import com.example.labportal.ui.theme.MmyrvTextDark
@@ -74,6 +75,7 @@ fun FaceScanDialog(
 
     var isScanning by remember { mutableStateOf(false) }
     var scanSuccess by remember { mutableStateOf(false) }
+    var showLiveCameraModal by remember { mutableStateOf(false) }
     var realCapturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var verificationText by remember { mutableStateOf<String?>(null) }
     var verificationError by remember { mutableStateOf<String?>(null) }
@@ -250,40 +252,23 @@ fun FaceScanDialog(
         confirmButton = {
             if (!scanSuccess) {
                 Button(
-                    onClick = {
-                        try {
-                            takePictureLauncher.launch(null)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Could not open camera: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                        }
-                    },
+                    onClick = { showLiveCameraModal = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
-                    shape = RoundedCornerShape(10.dp),
-                    enabled = !isScanning
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    if (isScanning) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Verifying...", fontSize = 12.sp, fontFamily = AppFontFamily)
-                    } else {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_face_recognition),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (verificationError != null) "Retry Face Verification" else "Open Camera & Verify Face",
-                            fontSize = 12.5.sp,
-                            fontFamily = AppFontFamily,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_face_recognition),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (verificationError != null) "Retry Live Face Scan" else "Open Live Camera & Verify Face",
+                        fontSize = 12.5.sp,
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             } else {
                 Button(
@@ -301,4 +286,21 @@ fun FaceScanDialog(
             }
         }
     )
+
+    if (showLiveCameraModal) {
+        LiveFaceScannerModal(
+            title = "Live Facial Attendance",
+            subtitle = "Front camera real-time biometric match",
+            registeredBase64 = user.facePhotoUrl,
+            onFaceCaptured = { bitmap, _ ->
+                realCapturedBitmap = bitmap
+                scanSuccess = true
+                verificationError = null
+                verificationText = "Live Face Verified! Attendance Marked."
+                showLiveCameraModal = false
+                Toast.makeText(context, "Attendance Marked for AI & Robotics Lab Successfully!", Toast.LENGTH_LONG).show()
+            },
+            onDismiss = { showLiveCameraModal = false }
+        )
+    }
 }

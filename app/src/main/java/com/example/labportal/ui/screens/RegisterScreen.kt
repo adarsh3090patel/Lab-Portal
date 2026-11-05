@@ -84,6 +84,7 @@ import com.example.labportal.R
 import com.example.labportal.network.CourseDto
 import com.example.labportal.network.NetworkClient
 import com.example.labportal.ui.components.BackgroundCurves
+import com.example.labportal.ui.components.LiveFaceScannerModal
 import com.example.labportal.ui.components.PortalHeader
 import com.example.labportal.ui.theme.AppFontFamily
 import com.example.labportal.ui.theme.LabPortalTheme
@@ -693,53 +694,31 @@ fun RegisterScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Primary Action: Open Device Front Camera for Strict Face ID
+                            // Primary Action: Open Live Camera Viewport
                             Button(
-                                onClick = {
-                                    try {
-                                        takePictureLauncher.launch(null)
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Could not launch camera: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                    }
-                                },
+                                onClick = { showFaceScanModal = true },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(42.dp),
+                                    .height(44.dp),
                                 shape = RoundedCornerShape(10.dp),
-                                enabled = !isVerifyingFace,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (faceEnrolled) Color(0xFF16A34A) else MmyrvPrimary
                                 )
                             ) {
-                                if (isVerifyingFace) {
-                                    CircularProgressIndicator(
-                                        color = Color.White,
-                                        strokeWidth = 2.dp,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Analyzing Facial Landmarks...",
-                                        fontSize = 12.sp,
-                                        fontFamily = AppFontFamily,
-                                        color = Color.White
-                                    )
-                                } else {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_face_recognition),
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = if (faceEnrolled) "Retake Real Face Photo" else "Open Camera & Capture Face (Strict AI)",
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = AppFontFamily,
-                                        color = Color.White
-                                    )
-                                }
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_face_recognition),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (faceEnrolled) "Retake Live Face Photo" else "Open Live Camera & Enroll Face ID",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
+                                    color = Color.White
+                                )
                             }
                         }
                     }
@@ -959,14 +938,19 @@ fun RegisterScreen(
         }
     }
 
-    // Modal Dialog for Facial Biometric Registration (Guided Landmark Scan)
+    // Live Camera In-App Facial Recognition Modal
     if (showFaceScanModal) {
-        FaceEnrollmentModal(
-            studentName = fullName.ifBlank { "Student" },
-            onFaceCaptured = {
+        LiveFaceScannerModal(
+            title = "Live Biometric Enrollment",
+            subtitle = "Front camera real-time AI face capture",
+            onFaceCaptured = { bitmap, base64 ->
+                capturedFaceBitmap = bitmap
+                facePhotoBase64 = base64
                 faceEnrolled = true
+                faceDetectionMsg = "Real Face Verified & Biometrics Locked"
                 showFaceScanModal = false
                 localValidationMsg = null
+                Toast.makeText(context, "Face Enrolled Successfully!", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showFaceScanModal = false }
         )
