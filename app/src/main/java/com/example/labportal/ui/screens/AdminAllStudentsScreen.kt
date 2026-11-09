@@ -561,21 +561,20 @@ fun AdminAllStudentsScreen(
                             .height(44.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (s.isBlocked) Color(0xFF10B981) else Color(0xFFFEF2F2)
+                            containerColor = if (s.isBlocked) Color(0xFF10B981) else Color(0xFFEF4444)
                         ),
-                        border = if (s.isBlocked) null else BorderStroke(1.dp, Color(0xFFFECACA)),
                         enabled = !isOperating
                     ) {
                         if (isOperating) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
-                                color = if (s.isBlocked) Color.White else Color(0xFFDC2626)
+                                color = Color.White
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (s.isBlocked) "Unblocking..." else "Blocking...",
-                                color = if (s.isBlocked) Color.White else Color(0xFFDC2626),
+                                color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
                                 fontFamily = AppFontFamily
@@ -584,13 +583,13 @@ fun AdminAllStudentsScreen(
                             Icon(
                                 painter = painterResource(id = if (s.isBlocked) R.drawable.ic_check_circle else R.drawable.ic_close),
                                 contentDescription = null,
-                                tint = if (s.isBlocked) Color.White else Color(0xFFDC2626),
+                                tint = Color.White,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (s.isBlocked) "Unblock" else "Block Access",
-                                color = if (s.isBlocked) Color.White else Color(0xFFDC2626),
+                                text = if (s.isBlocked) "Unblock Student" else "Block Access",
+                                color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
                                 fontFamily = AppFontFamily
@@ -662,20 +661,36 @@ fun AdminAllStudentsScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFAF5FF)),
                         border = BorderStroke(1.dp, Color(0xFFE9D5FF))
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_schedule),
-                            contentDescription = null,
-                            tint = Color(0xFF7E22CE),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Edit History",
-                            color = Color(0xFF7E22CE),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            fontFamily = AppFontFamily
-                        )
+                        if (isLoadingHistory && studentForEditHistory?.id == s.id) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color(0xFF7E22CE)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Loading History...",
+                                color = Color(0xFF7E22CE),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                fontFamily = AppFontFamily
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_schedule),
+                                contentDescription = null,
+                                tint = Color(0xFF7E22CE),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Edit History",
+                                color = Color(0xFF7E22CE),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                fontFamily = AppFontFamily
+                            )
+                        }
                     }
 
                     // Delete Student Button
@@ -958,7 +973,20 @@ fun AdminAllStudentsScreen(
 
                     if (isLoadingHistory) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = MmyrvPrimary)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(
+                                    color = MmyrvPrimary,
+                                    strokeWidth = 2.5.dp,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Fetching edit audit trail from MongoDB Atlas...",
+                                    fontSize = 12.sp,
+                                    fontFamily = AppFontFamily,
+                                    color = MmyrvTextMuted
+                                )
+                            }
                         }
                     } else if (historyList.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

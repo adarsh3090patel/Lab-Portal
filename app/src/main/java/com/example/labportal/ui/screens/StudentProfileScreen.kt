@@ -477,21 +477,27 @@ fun StudentProfileScreen(
                             }
                         }
 
-                        // Camera Badge to change Profile Photo
+                        // Camera/Lock Badge to change Profile Photo
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(MmyrvPrimary)
+                                .background(if (canEditPersonal) MmyrvPrimary else Color(0xFF94A3B8))
                                 .border(BorderStroke(2.dp, Color.White), CircleShape)
-                                .clickable { showAvatarPickerOptions = true },
+                                .clickable {
+                                    if (canEditPersonal) {
+                                        showAvatarPickerOptions = true
+                                    } else {
+                                        showLockedProfileAlert = true
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_camera),
-                                contentDescription = "Change Profile Picture",
+                                painter = painterResource(id = if (canEditPersonal) R.drawable.ic_camera else R.drawable.ic_lock),
+                                contentDescription = if (canEditPersonal) "Change Profile Picture" else "Profile Photo Locked",
                                 tint = Color.White,
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -600,22 +606,25 @@ fun StudentProfileScreen(
                                 .weight(1f)
                                 .defaultMinSize(minHeight = 44.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (canEditPersonal) MmyrvPrimary else Color(0xFFF1F5F9)
+                            ),
+                            border = if (canEditPersonal) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_camera),
+                                painter = painterResource(id = if (canEditPersonal) R.drawable.ic_camera else R.drawable.ic_lock),
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = if (canEditPersonal) Color.White else Color(0xFF64748B),
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Change Photo",
+                                text = if (canEditPersonal) "Change Photo" else "Photo Locked",
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
-                                color = Color.White,
+                                color = if (canEditPersonal) Color.White else Color(0xFF64748B),
                                 maxLines = 1
                             )
                         }

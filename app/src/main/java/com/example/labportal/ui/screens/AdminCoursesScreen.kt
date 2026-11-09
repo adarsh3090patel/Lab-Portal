@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -36,6 +37,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -57,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.labportal.R
@@ -85,6 +88,7 @@ fun AdminCoursesScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var showAddCourseSheet by remember { mutableStateOf(false) }
+    var courseToDelete by remember { mutableStateOf<CourseDto?>(null) }
 
     // Instant 0ms loading from in-memory cache or default static courses
     val coursesList = remember {
@@ -298,40 +302,173 @@ fun AdminCoursesScreen(
                     items(coursesList, key = { it.id }) { course ->
                         CourseManagementCard(
                             course = course,
-                            onDelete = { onFinish ->
-                                coroutineScope.launch {
-                                    try {
-                                        val res = NetworkClient.apiService.deleteCourse(
-                                            id = course.id,
-                                            name = course.name,
-                                            code = course.code
-                                        )
-                                        if (res.isSuccessful) {
-                                            coursesList.removeAll {
-                                                it.id == course.id ||
-                                                it.code.equals(course.code, ignoreCase = true) ||
-                                                it.name.equals(course.name, ignoreCase = true)
-                                            }
-                                            CourseCache.list = coursesList.toList()
-                                            Toast.makeText(context, "${course.name} deleted from database.", Toast.LENGTH_SHORT).show()
-                                            // Synchronize directly with MongoDB Atlas
-                                            loadCourses(showSpinner = false)
-                                        } else {
-                                            val err = res.errorBody()?.string() ?: res.message()
-                                            Toast.makeText(context, "Failed to delete from database: $err", Toast.LENGTH_LONG).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Network error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                    } finally {
-                                        onFinish()
-                                    }
-                                }
+                            onDelete = {
+                                courseToDelete = course
                             }
                         )
                     }
                 }
             }
         }
+    }
+
+    // Delete Course Confirmation Dialog with Prominent Loader
+    if (courseToDelete != null) {
+        val c = courseToDelete!!
+        var isDeletingThisCourse by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { if (!isDeletingThisCourse) courseToDelete = null },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFEE2E2)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_delete),
+                        contentDescription = null,
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = "Delete Course from Database?",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = AppFontFamily,
+                    color = MmyrvTextDark,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Are you sure you want to permanently delete this course?",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = AppFontFamily,
+                        color = MmyrvTextDark
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF8FAFC))
+                            .border(BorderStroke(1.dp, Color(0xFFE2E8F0)), RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = c.name,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Code: ${c.code} • ${c.semesters.size} Semesters",
+                                fontSize = 11.5.sp,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextMuted
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "This will immediately delete the course directly from MongoDB Atlas and registration dropdowns. Existing enrolled students will preserve their records.",
+                        fontSize = 11.5.sp,
+                        fontFamily = AppFontFamily,
+                        color = Color(0xFF64748B),
+                        lineHeight = 16.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isDeletingThisCourse = true
+                        coroutineScope.launch {
+                            try {
+                                val res = NetworkClient.apiService.deleteCourse(
+                                    id = c.id,
+                                    name = c.name,
+                                    code = c.code
+                                )
+                                isDeletingThisCourse = false
+                                if (res.isSuccessful) {
+                                    coursesList.removeAll {
+                                        it.id == c.id ||
+                                        it.code.equals(c.code, ignoreCase = true) ||
+                                        it.name.equals(c.name, ignoreCase = true)
+                                    }
+                                    CourseCache.list = coursesList.toList()
+                                    courseToDelete = null
+                                    Toast.makeText(context, "'${c.name}' permanently deleted from MongoDB Atlas!", Toast.LENGTH_SHORT).show()
+                                    loadCourses(showSpinner = false)
+                                } else {
+                                    val err = res.errorBody()?.string() ?: res.message()
+                                    Toast.makeText(context, "Failed to delete: $err", Toast.LENGTH_LONG).show()
+                                }
+                            } catch (e: Exception) {
+                                isDeletingThisCourse = false
+                                Toast.makeText(context, "Network error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isDeletingThisCourse,
+                    modifier = Modifier.height(42.dp)
+                ) {
+                    if (isDeletingThisCourse) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Deleting from Database...",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFontFamily,
+                            fontSize = 12.sp
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_delete),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Delete Permanently",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFontFamily,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { courseToDelete = null },
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isDeletingThisCourse,
+                    modifier = Modifier.height(42.dp)
+                ) {
+                    Text("Cancel", color = MmyrvTextDark, fontFamily = AppFontFamily, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
     }
 
     // Add Course Bottom Slide Panel (ModalBottomSheet) with 100% width and compact height
@@ -391,9 +528,8 @@ fun AdminCoursesScreen(
 @Composable
 private fun CourseManagementCard(
     course: CourseDto,
-    onDelete: (onFinish: () -> Unit) -> Unit
+    onDelete: () -> Unit
 ) {
-    var isDeleting by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -456,27 +592,15 @@ private fun CourseManagementCard(
                 }
 
                 IconButton(
-                    onClick = {
-                        isDeleting = true
-                        onDelete { isDeleting = false }
-                    },
-                    modifier = Modifier.size(32.dp),
-                    enabled = !isDeleting
+                    onClick = onDelete,
+                    modifier = Modifier.size(36.dp)
                 ) {
-                    if (isDeleting) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFEF4444),
-                            strokeWidth = 1.8.dp,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_delete),
-                            contentDescription = "Delete Course",
-                            tint = Color(0xFFEF4444),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_delete),
+                        contentDescription = "Delete Course",
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -777,7 +901,7 @@ private fun AddCourseBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Adding Course...",
+                        text = "Adding Course to MongoDB...",
                         fontFamily = AppFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
