@@ -566,20 +566,36 @@ fun AdminAllStudentsScreen(
                         border = if (s.isBlocked) null else BorderStroke(1.dp, Color(0xFFFECACA)),
                         enabled = !isOperating
                     ) {
-                        Icon(
-                            painter = painterResource(id = if (s.isBlocked) R.drawable.ic_check_circle else R.drawable.ic_close),
-                            contentDescription = null,
-                            tint = if (s.isBlocked) Color.White else Color(0xFFDC2626),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (s.isBlocked) "Unblock" else "Block Access",
-                            color = if (s.isBlocked) Color.White else Color(0xFFDC2626),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            fontFamily = AppFontFamily
-                        )
+                        if (isOperating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = if (s.isBlocked) Color.White else Color(0xFFDC2626)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (s.isBlocked) "Unblocking..." else "Blocking...",
+                                color = if (s.isBlocked) Color.White else Color(0xFFDC2626),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                fontFamily = AppFontFamily
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = if (s.isBlocked) R.drawable.ic_check_circle else R.drawable.ic_close),
+                                contentDescription = null,
+                                tint = if (s.isBlocked) Color.White else Color(0xFFDC2626),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (s.isBlocked) "Unblock" else "Block Access",
+                                color = if (s.isBlocked) Color.White else Color(0xFFDC2626),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                fontFamily = AppFontFamily
+                            )
+                        }
                     }
 
                     // Update Permissions Button
@@ -1042,8 +1058,9 @@ fun AdminAllStudentsScreen(
     // Dialog 3: Delete Student Confirmation Dialog
     if (studentToDelete != null) {
         val s = studentToDelete!!
+        var isDeletingStudent by remember { mutableStateOf(false) }
         AlertDialog(
-            onDismissRequest = { studentToDelete = null },
+            onDismissRequest = { if (!isDeletingStudent) studentToDelete = null },
             icon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_close),
@@ -1073,9 +1090,11 @@ fun AdminAllStudentsScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        isDeletingStudent = true
                         coroutineScope.launch {
                             try {
                                 val res = NetworkClient.apiService.deleteStudentPermanently(s.id)
+                                isDeletingStudent = false
                                 if (res.isSuccessful) {
                                     studentsList.removeAll { it.id == s.id }
                                     ApprovedStudentsCache.list = studentsList.toList()
@@ -1086,20 +1105,33 @@ fun AdminAllStudentsScreen(
                                     Toast.makeText(context, "Failed to delete student.", Toast.LENGTH_SHORT).show()
                                 }
                             } catch (e: Exception) {
+                                isDeletingStudent = false
                                 Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48)),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isDeletingStudent
                 ) {
-                    Text("Delete Permanently", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
+                    if (isDeletingStudent) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Deleting...", color = Color.White, fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Delete Permanently", color = Color.White, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
+                    }
                 }
             },
             dismissButton = {
                 OutlinedButton(
-                    onClick = { studentToDelete = null },
-                    shape = RoundedCornerShape(10.dp)
+                    onClick = { if (!isDeletingStudent) studentToDelete = null },
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isDeletingStudent
                 ) {
                     Text("Cancel", color = MmyrvTextDark, fontFamily = AppFontFamily)
                 }

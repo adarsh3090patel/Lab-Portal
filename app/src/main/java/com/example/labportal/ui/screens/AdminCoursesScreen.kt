@@ -263,24 +263,50 @@ fun AdminCoursesScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(coursesList, key = { it.id }) { course ->
-                    CourseManagementCard(
-                        course = course,
-                        onDelete = {
-                            coroutineScope.launch {
-                                try {
-                                    NetworkClient.apiService.deleteCourse(course.id)
-                                } catch (_: Exception) {}
-                                coursesList.removeAll { it.id == course.id }
-                                CourseCache.list = coursesList.toList()
-                                Toast.makeText(context, "${course.name} removed", Toast.LENGTH_SHORT).show()
+            if (coursesList.isEmpty() && isRefreshing) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 40.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            color = MmyrvPrimary,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "Loading Degree Catalog...",
+                            fontSize = 13.5.sp,
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MmyrvTextMuted
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(coursesList, key = { it.id }) { course ->
+                        CourseManagementCard(
+                            course = course,
+                            onDelete = { onFinish ->
+                                coroutineScope.launch {
+                                    try {
+                                        NetworkClient.apiService.deleteCourse(course.id)
+                                    } catch (_: Exception) {}
+                                    coursesList.removeAll { it.id == course.id }
+                                    CourseCache.list = coursesList.toList()
+                                    Toast.makeText(context, "${course.name} removed", Toast.LENGTH_SHORT).show()
+                                    onFinish()
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -290,7 +316,7 @@ fun AdminCoursesScreen(
     if (showAddCourseSheet) {
         AddCourseBottomSheet(
             onDismiss = { showAddCourseSheet = false },
-            onAdd = { name, code, semestersCount, facultyName ->
+            onAdd = { name, code, semestersCount, facultyName, onDone ->
                 val generatedSemesters = (1..semestersCount).map { i ->
                     val roman = when (i) {
                         1 -> "I"; 2 -> "II"; 3 -> "III"; 4 -> "IV"
@@ -322,6 +348,7 @@ fun AdminCoursesScreen(
 
                     coursesList.add(0, newCourse)
                     CourseCache.list = coursesList.toList()
+                    onDone()
                     showAddCourseSheet = false
                     Toast.makeText(context, "Added $name successfully!", Toast.LENGTH_SHORT).show()
                 }
@@ -334,8 +361,9 @@ fun AdminCoursesScreen(
 @Composable
 private fun CourseManagementCard(
     course: CourseDto,
-    onDelete: () -> Unit
+    onDelete: (onFinish: () -> Unit) -> Unit
 ) {
+    var isDeleting by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -398,15 +426,27 @@ private fun CourseManagementCard(
                 }
 
                 IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
+                    onClick = {
+                        isDeleting = true
+                        onDelete { isDeleting = false }
+                    },
+                    modifier = Modifier.size(32.dp),
+                    enabled = !isDeleting
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_delete),
-                        contentDescription = "Delete Course",
-                        tint = Color(0xFFEF4444),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    if (isDeleting) {
+                        CircularProgressIndicator(
+                            color = Color(0xFFEF4444),
+                            strokeWidth = 1.8.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_delete),
+                            contentDescription = "Delete Course",
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -456,7 +496,7 @@ private fun CourseManagementCard(
 @Composable
 private fun AddCourseBottomSheet(
     onDismiss: () -> Unit,
-    onAdd: (name: String, code: String, semestersCount: Int, facultyName: String) -> Unit
+    onAdd: (name: String, code: String, semestersCount: Int, facultyName: String, onDone: () -> Unit) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -465,6 +505,7 @@ private fun AddCourseBottomSheet(
     var semestersCountStr by remember { mutableStateOf("6") }
     var facultyName by remember { mutableStateOf("") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var isAddingCourse by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -686,27 +727,47 @@ private fun AddCourseBottomSheet(
                         errorMsg = "Please enter a valid number of semesters (1 to 12)."
                         return@Button
                     }
-                    onAdd(trimmedName, trimmedCode, count, facultyName.trim())
+                    isAddingCourse = true
+                    onAdd(trimmedName, trimmedCode, count, facultyName.trim()) {
+                        isAddingCourse = false
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(48.dp),
+                enabled = !isAddingCourse
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_check_circle),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Save & Add Course",
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
+                if (isAddingCourse) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Adding Course...",
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Color.White
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_check_circle),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Save & Add Course",
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))

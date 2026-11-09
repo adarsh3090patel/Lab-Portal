@@ -204,13 +204,21 @@ fun AdminStudentApprovalsScreen(
                     }
 
                     // Refresh Button
-                    IconButton(onClick = { loadStudents() }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_schedule),
-                            contentDescription = "Refresh",
-                            tint = MmyrvPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    IconButton(onClick = { loadStudents() }, enabled = !isLoading) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                color = MmyrvPrimary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_schedule),
+                                contentDescription = "Refresh",
+                                tint = MmyrvPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
                 HorizontalDivider(color = MmyrvBorder, thickness = 1.dp)
@@ -342,7 +350,7 @@ fun AdminStudentApprovalsScreen(
                     items(filteredList, key = { it.id }) { student ->
                         StudentApprovalCard(
                             student = student,
-                            onApprove = {
+                            onApprove = { onFinish ->
                                 coroutineScope.launch {
                                     try {
                                         NetworkClient.apiService.approveStudent(student.id)
@@ -353,15 +361,17 @@ fun AdminStudentApprovalsScreen(
                                         studentsList[idx] = student.copy(isApproved = true)
                                     }
                                     Toast.makeText(context, "${student.fullName} has been approved!", Toast.LENGTH_SHORT).show()
+                                    onFinish()
                                 }
                             },
-                            onReject = {
+                            onReject = { onFinish ->
                                 coroutineScope.launch {
                                     try {
                                         NetworkClient.apiService.rejectStudent(student.id)
                                     } catch (_: Exception) {}
                                     studentsList.removeAll { it.id == student.id }
                                     Toast.makeText(context, "${student.fullName} rejected and removed", Toast.LENGTH_SHORT).show()
+                                    onFinish()
                                 }
                             }
                         )
@@ -375,10 +385,13 @@ fun AdminStudentApprovalsScreen(
 @Composable
 private fun StudentApprovalCard(
     student: StudentApprovalDto,
-    onApprove: () -> Unit,
-    onReject: () -> Unit
+    onApprove: (onComplete: () -> Unit) -> Unit,
+    onReject: (onComplete: () -> Unit) -> Unit
 ) {
     var showFullFaceDialog by remember { mutableStateOf(false) }
+    var isApproving by remember { mutableStateOf(false) }
+    var isRejecting by remember { mutableStateOf(false) }
+    val isProcessing = isApproving || isRejecting
     val profileImageBitmap = remember(student.profilePhotoUrl) {
         FaceDetectionHelper.base64ToImageBitmap(student.profilePhotoUrl)
     }
@@ -610,46 +623,86 @@ private fun StudentApprovalCard(
                 ) {
                     // Approve Button
                     Button(
-                        onClick = onApprove,
+                        onClick = {
+                            isApproving = true
+                            onApprove { isApproving = false }
+                        },
                         modifier = Modifier
                             .weight(1f)
                             .height(40.dp),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                        enabled = !isProcessing
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_check_circle),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Approve",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = AppFontFamily,
-                            color = Color.White
-                        )
+                        if (isApproving) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Approving...",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = Color.White
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_check_circle),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Approve",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = Color.White
+                            )
+                        }
                     }
 
                     // Reject Button
                     OutlinedButton(
-                        onClick = onReject,
+                        onClick = {
+                            isRejecting = true
+                            onReject { isRejecting = false }
+                        },
                         modifier = Modifier
                             .weight(0.7f)
                             .height(40.dp),
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, Color(0xFFFECACA)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
+                        enabled = !isProcessing
                     ) {
-                        Text(
-                            text = "Reject",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = AppFontFamily,
-                            color = Color(0xFFEF4444)
-                        )
+                        if (isRejecting) {
+                            CircularProgressIndicator(
+                                color = Color(0xFFEF4444),
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Rejecting...",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = Color(0xFFEF4444)
+                            )
+                        } else {
+                            Text(
+                                text = "Reject",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = Color(0xFFEF4444)
+                            )
+                        }
                     }
                 }
             }

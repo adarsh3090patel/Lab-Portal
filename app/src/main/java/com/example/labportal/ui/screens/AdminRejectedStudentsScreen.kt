@@ -189,14 +189,23 @@ fun AdminRejectedStudentsScreen(
 
                     IconButton(
                         onClick = { fetchRejectedStudents() },
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(38.dp),
+                        enabled = !isLoading
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_refresh),
-                            contentDescription = "Refresh",
-                            tint = MmyrvPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                color = MmyrvPrimary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_refresh),
+                                contentDescription = "Refresh",
+                                tint = MmyrvPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -562,36 +571,55 @@ fun AdminRejectedStudentsScreen(
                             Text("Delete Record", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
                         }
 
+                        var isReApproving by remember { mutableStateOf(false) }
+
                         Button(
                             onClick = {
                                 val s = student
-                                selectedStudentForDetail = null
+                                isReApproving = true
                                 coroutineScope.launch {
                                     try {
                                         val res = NetworkClient.apiService.approveStudent(s.id)
+                                        isReApproving = false
                                         if (res.isSuccessful) {
+                                            selectedStudentForDetail = null
                                             rejectedList.removeAll { it.id == s.id }
                                             RejectedStudentsCache.list = rejectedList.toList()
                                             ApprovedStudentsCache.list = ApprovedStudentsCache.list + s.copy(isApproved = true, status = "approved")
                                             Toast.makeText(context, "${s.fullName} re-approved!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Could not re-approve student.", Toast.LENGTH_SHORT).show()
                                         }
-                                    } catch (_: Exception) {}
+                                    } catch (_: Exception) {
+                                        isReApproving = false
+                                    }
                                 }
                             },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            enabled = !isReApproving
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_check_circle),
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.White
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Re-Approve", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
+                            if (isReApproving) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Approving...", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily, color = Color.White)
+                            } else {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_check_circle),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Re-Approve", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
+                            }
                         }
                     }
                 }
@@ -602,8 +630,9 @@ fun AdminRejectedStudentsScreen(
     // Permanent Deletion Confirmation Dialog
     if (studentToDelete != null) {
         val s = studentToDelete!!
+        var isDeletingRecord by remember { mutableStateOf(false) }
         AlertDialog(
-            onDismissRequest = { studentToDelete = null },
+            onDismissRequest = { if (!isDeletingRecord) studentToDelete = null },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -634,13 +663,13 @@ fun AdminRejectedStudentsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        studentToDelete = null
-                        actionInProgressId = s.id
+                        isDeletingRecord = true
                         coroutineScope.launch {
                             try {
                                 val res = NetworkClient.apiService.deleteStudentPermanently(s.id)
-                                actionInProgressId = null
+                                isDeletingRecord = false
                                 if (res.isSuccessful) {
+                                    studentToDelete = null
                                     rejectedList.removeAll { it.id == s.id }
                                     RejectedStudentsCache.list = rejectedList.toList()
                                     Toast.makeText(context, "${s.fullName} deleted permanently.", Toast.LENGTH_SHORT).show()
@@ -648,19 +677,30 @@ fun AdminRejectedStudentsScreen(
                                     Toast.makeText(context, "Delete failed: ${res.message()}", Toast.LENGTH_SHORT).show()
                                 }
                             } catch (e: Exception) {
-                                actionInProgressId = null
+                                isDeletingRecord = false
                                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isDeletingRecord
                 ) {
-                    Text("Delete Permanently", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                    if (isDeletingRecord) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Deleting...", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold, color = Color.White)
+                    } else {
+                        Text("Delete Permanently", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { studentToDelete = null }) {
+                TextButton(onClick = { if (!isDeletingRecord) studentToDelete = null }, enabled = !isDeletingRecord) {
                     Text("Cancel", fontFamily = AppFontFamily, color = MmyrvTextMuted)
                 }
             }

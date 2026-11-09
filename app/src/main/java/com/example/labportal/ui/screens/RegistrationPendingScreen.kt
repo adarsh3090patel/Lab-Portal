@@ -1,5 +1,6 @@
 package com.example.labportal.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,20 +22,29 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.labportal.R
+import com.example.labportal.network.NetworkClient
 import com.example.labportal.ui.components.BackgroundCurves
 import com.example.labportal.ui.components.PortalHeader
 import com.example.labportal.ui.theme.AppFontFamily
@@ -42,6 +52,7 @@ import com.example.labportal.ui.theme.MmyrvBorder
 import com.example.labportal.ui.theme.MmyrvPrimary
 import com.example.labportal.ui.theme.MmyrvTextDark
 import com.example.labportal.ui.theme.MmyrvTextMuted
+import kotlinx.coroutines.launch
 
 @Composable
 fun RegistrationPendingScreen(
@@ -54,6 +65,10 @@ fun RegistrationPendingScreen(
     phone: String = "+91 98765 43210",
     onBackToLogin: () -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isCheckingStatus by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -222,28 +237,95 @@ fun RegistrationPendingScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Back to Login Button
+                    // Action 1: Check Approval Status
                     Button(
+                        onClick = {
+                            isCheckingStatus = true
+                            coroutineScope.launch {
+                                try {
+                                    val res = NetworkClient.apiService.getUserStatus(rollNo)
+                                    isCheckingStatus = false
+                                    if (res.isSuccessful && res.body() != null) {
+                                        val st = res.body()!!
+                                        if (st.isApproved || st.status == "approved") {
+                                            Toast.makeText(context, "Congratulations! Your account has been approved by Admin.", Toast.LENGTH_LONG).show()
+                                            onBackToLogin()
+                                        } else if (st.isBlocked || st.status == "blocked") {
+                                            Toast.makeText(context, "Account status: Suspended or blocked.", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Registration status: Pending Admin Review.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "Could not reach server to verify status.", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    isCheckingStatus = false
+                                    Toast.makeText(context, "Network error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                        enabled = !isCheckingStatus
+                    ) {
+                        if (isCheckingStatus) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Checking Approval Status...",
+                                fontSize = 14.sp,
+                                fontFamily = AppFontFamily,
+                                color = Color.White
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_schedule),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Check Approval Status",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Back to Login Button
+                    OutlinedButton(
                         onClick = onBackToLogin,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary)
+                        border = BorderStroke(1.dp, MmyrvBorder)
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_home),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MmyrvTextDark,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Back to Login",
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = AppFontFamily,
-                            color = Color.White
+                            color = MmyrvTextDark
                         )
                     }
                 }

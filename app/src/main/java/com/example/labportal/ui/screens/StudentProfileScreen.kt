@@ -1593,23 +1593,27 @@ fun StudentProfileScreen(
                         Button(
                             onClick = {
                                 showFullProfilePhotoDialog = false
-                                showAvatarPickerOptions = true
+                                if (canEditPersonal) {
+                                    showAvatarPickerOptions = true
+                                } else {
+                                    showLockedProfileAlert = true
+                                }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(44.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary)
+                            colors = ButtonDefaults.buttonColors(containerColor = if (canEditPersonal) MmyrvPrimary else Color(0xFF64748B))
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_camera),
+                                painter = painterResource(id = if (canEditPersonal) R.drawable.ic_camera else R.drawable.ic_lock),
                                 contentDescription = null,
                                 tint = Color.White,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Change Photo",
+                                text = if (canEditPersonal) "Change Photo" else "Photo Locked (Admin Only)",
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily
@@ -1847,6 +1851,51 @@ fun StudentProfileScreen(
                 },
                 onDismiss = { showLiveFaceScanner = false }
             )
+        }
+
+        // Global Saving Overlay (when saving profile or biometrics)
+        if (isSaving) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            color = MmyrvPrimary,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "Saving to Database",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextDark
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Updating MongoDB Atlas record...",
+                                fontSize = 11.5.sp,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextMuted
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -574,14 +574,27 @@ fun LiveFaceScannerModal(
                             .padding(vertical = 10.dp, horizontal = 14.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = if (isResolvingTemplate) "Loading Registered Biometric Template..." else statusMessage,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = AppFontFamily,
-                            color = if (recognitionState == RecognitionState.IDENTITY_VERIFIED) Color(0xFF15803D) else animatedFrameColor,
-                            textAlign = TextAlign.Center
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            if (isResolvingTemplate || isProcessingFrame) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(13.dp),
+                                    strokeWidth = 2.dp,
+                                    color = animatedFrameColor
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = if (isResolvingTemplate) "Loading Registered Biometric Template..." else statusMessage,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = if (recognitionState == RecognitionState.IDENTITY_VERIFIED) Color(0xFF15803D) else animatedFrameColor,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
