@@ -13,8 +13,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -88,6 +90,7 @@ fun StudentProfileScreen(
     var isSaving by remember { mutableStateOf(false) }
     var showLiveFaceScanner by remember { mutableStateOf(false) }
     var showFullBiometricDialog by remember { mutableStateOf(false) }
+    var showFullProfilePhotoDialog by remember { mutableStateOf(false) }
     var showAvatarPickerOptions by remember { mutableStateOf(false) }
 
     // Separate State: 1. Display Profile Avatar & 2. Official Biometric Face Template
@@ -241,10 +244,10 @@ fun StudentProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Extra spacing so camera punch-hole / dynamic island never overlaps the top bar
-            Spacer(modifier = Modifier.height(14.dp))
+            // Generous spacing so camera punch-hole / dynamic island never overlaps the top bar
+            Spacer(modifier = Modifier.height(28.dp))
 
             // 1. Top Bar: Back Button, Title/Subtitle, Edit Profile Button
             Row(
@@ -477,57 +480,67 @@ fun StudentProfileScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Dual Buttons: Change Profile Photo & Open Biometric Scan
+                    // Dual Buttons: View Photo & Change Photo (Matches original clean layout)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
-                            onClick = { showAvatarPickerOptions = true },
+                            onClick = {
+                                if (currentProfilePhoto.isNotBlank()) {
+                                    showFullProfilePhotoDialog = true
+                                } else {
+                                    showAvatarPickerOptions = true
+                                }
+                            },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp),
+                                .defaultMinSize(minHeight = 44.dp),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White)
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_camera),
+                                painter = painterResource(id = R.drawable.ic_visibility),
                                 contentDescription = null,
                                 tint = MmyrvPrimary,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Change Avatar",
+                                text = "View Photo",
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
-                                color = MmyrvPrimary
+                                color = MmyrvPrimary,
+                                maxLines = 1
                             )
                         }
 
                         Button(
-                            onClick = { showLiveFaceScanner = true },
+                            onClick = { showAvatarPickerOptions = true },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp),
+                                .defaultMinSize(minHeight = 44.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary)
+                            colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_face_recognition),
+                                painter = painterResource(id = R.drawable.ic_camera),
                                 contentDescription = null,
                                 tint = Color.White,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Screen-Lock Face",
+                                text = "Change Photo",
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 1
                             )
                         }
                     }
@@ -651,9 +664,10 @@ fun StudentProfileScreen(
                             onClick = { showFullBiometricDialog = true },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp),
+                                .defaultMinSize(minHeight = 42.dp),
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_visibility),
@@ -664,20 +678,22 @@ fun StudentProfileScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "View Biometric",
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
-                                color = MmyrvTextDark
+                                color = MmyrvTextDark,
+                                maxLines = 1
                             )
                         }
 
                         Button(
                             onClick = { showLiveFaceScanner = true },
                             modifier = Modifier
-                                .weight(1.2f)
-                                .height(40.dp),
+                                .weight(1.1f)
+                                .defaultMinSize(minHeight = 42.dp),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_camera),
@@ -687,11 +703,12 @@ fun StudentProfileScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Re-Enroll Lock Face",
-                                fontSize = 12.sp,
+                                text = "Re-Enroll Face",
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 1
                             )
                         }
                     }
@@ -1229,7 +1246,123 @@ fun StudentProfileScreen(
             )
         }
 
-        // 8. High-Resolution Biometric Template Inspection Modal
+        // 8. High-Resolution Profile Photo Inspection Modal
+        if (showFullProfilePhotoDialog) {
+            Dialog(onDismissRequest = { showFullProfilePhotoDialog = false }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(0.92f),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Profile Photo",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextDark
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFF1F5F9))
+                                    .clickable { showFullProfilePhotoDialog = false },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_close),
+                                    contentDescription = "Close",
+                                    tint = MmyrvTextMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .size(240.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color(0xFFF1F5F9))
+                                .border(BorderStroke(1.5.dp, Color(0xFFC7D2FE)), RoundedCornerShape(20.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (profileImageBitmap != null) {
+                                Image(
+                                    bitmap = profileImageBitmap,
+                                    contentDescription = "Profile Photo",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_person),
+                                    contentDescription = null,
+                                    tint = MmyrvTextMuted,
+                                    modifier = Modifier.size(90.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = fullNameInput.ifBlank { user.fullName },
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvTextDark
+                        )
+                        Text(
+                            text = "${user.programme} • Roll: ${user.rollNo}",
+                            fontSize = 12.5.sp,
+                            fontFamily = AppFontFamily,
+                            color = MmyrvTextMuted
+                        )
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        Button(
+                            onClick = {
+                                showFullProfilePhotoDialog = false
+                                showAvatarPickerOptions = true
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_camera),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Change Photo",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 9. High-Resolution Biometric Template Inspection Modal
         if (showFullBiometricDialog) {
             Dialog(onDismissRequest = { showFullBiometricDialog = false }) {
                 Card(
