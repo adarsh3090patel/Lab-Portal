@@ -25,6 +25,7 @@ import com.example.labportal.ui.screens.DashboardScreen
 import com.example.labportal.ui.screens.LoginScreen
 import com.example.labportal.ui.screens.RegisterScreen
 import com.example.labportal.ui.screens.RegistrationPendingScreen
+import com.example.labportal.ui.screens.StudentBlockedScreen
 import com.example.labportal.ui.theme.LabPortalTheme
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -33,6 +34,7 @@ enum class AppScreen {
     LOGIN,
     REGISTER,
     REGISTRATION_PENDING,
+    BLOCKED,
     DASHBOARD
 }
 
@@ -62,6 +64,7 @@ fun MainAppNavigation() {
     var currentScreen by remember { mutableStateOf(AppScreen.LOGIN) }
     var loggedInUser by remember { mutableStateOf<UserData?>(null) }
     var pendingStudentData by remember { mutableStateOf<UserData?>(null) }
+    var blockedStudentData by remember { mutableStateOf<UserData?>(null) }
 
     // Loading & Error States
     var isLoading by remember { mutableStateOf(false) }
@@ -96,7 +99,7 @@ fun MainAppNavigation() {
 
                             if (response.isSuccessful && response.body() != null) {
                                 val userDto = response.body()!!.user
-                                loggedInUser = UserData(
+                                val mappedUser = UserData(
                                     fullName = userDto.fullName,
                                     email = userDto.email,
                                     rollNo = userDto.rollNo,
@@ -118,10 +121,21 @@ fun MainAppNavigation() {
                                     permanentAddress = userDto.permanentAddress,
                                     guardianName = userDto.guardianName,
                                     guardianPhone = userDto.guardianPhone,
-                                    enrollmentNo = userDto.rollNo
+                                    enrollmentNo = userDto.rollNo,
+                                    isBlocked = userDto.isBlocked,
+                                    status = userDto.status,
+                                    allowedEdits = userDto.allowedEdits,
+                                    initialEditDone = userDto.initialEditDone
                                 )
-                                Toast.makeText(context, "Welcome ${userDto.fullName} (${userDto.role})", Toast.LENGTH_SHORT).show()
-                                currentScreen = AppScreen.DASHBOARD
+
+                                if (userDto.isBlocked || userDto.status == "blocked") {
+                                    blockedStudentData = mappedUser
+                                    currentScreen = AppScreen.BLOCKED
+                                } else {
+                                    loggedInUser = mappedUser
+                                    Toast.makeText(context, "Welcome ${userDto.fullName} (${userDto.role})", Toast.LENGTH_SHORT).show()
+                                    currentScreen = AppScreen.DASHBOARD
+                                }
                             } else {
                                 val errorBody = response.errorBody()?.string()
                                 val message = try {
@@ -130,7 +144,13 @@ fun MainAppNavigation() {
                                 } catch (e: Exception) {
                                     "Invalid credentials or user not found."
                                 }
-                                loginError = message
+
+                                if (message.contains("ACCOUNT_BLOCKED", ignoreCase = true) || message.contains("suspended", ignoreCase = true) || message.contains("blocked", ignoreCase = true)) {
+                                    blockedStudentData = UserData(fullName = "Student", email = cleanEmail, rollNo = "N/A", role = "Student", isBlocked = true, status = "blocked")
+                                    currentScreen = AppScreen.BLOCKED
+                                } else {
+                                    loginError = message
+                                }
                             }
                         } catch (e: Exception) {
                             isLoading = false
@@ -263,6 +283,25 @@ fun MainAppNavigation() {
                 onBackToLogin = {
                     loginError = null
                     registerError = null
+                    currentScreen = AppScreen.LOGIN
+                }
+            )
+        }
+
+        AppScreen.BLOCKED -> {
+            val student = blockedStudentData ?: loggedInUser ?: UserData("Student", "", "", "Student")
+            StudentBlockedScreen(
+                fullName = student.fullName,
+                email = student.email,
+                rollNo = student.rollNo,
+                userId = student.id.ifBlank { student.rollNo },
+                onUnblocked = {
+                    loggedInUser = student.copy(isBlocked = false, status = "approved")
+                    currentScreen = AppScreen.DASHBOARD
+                },
+                onSignOut = {
+                    blockedStudentData = null
+                    loggedInUser = null
                     currentScreen = AppScreen.LOGIN
                 }
             )

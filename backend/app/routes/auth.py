@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 from fastapi import APIRouter, HTTPException, status
 from bson import ObjectId
@@ -93,11 +94,21 @@ def login(credentials: UserLoginRequest):
 
     # Check approval status for non-admin accounts
     is_admin = user.get("role", "Student").lower() == "admin"
+    is_blocked = user.get("isBlocked", False) or user.get("status") == "blocked"
+
+    if not is_admin and is_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ACCOUNT_BLOCKED: Your account has been suspended/blocked by the administrator."
+        )
+
     if not is_admin and user.get("isApproved") is False:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account is pending admin approval. You will be able to log in once the lab administrator approves your registration."
         )
+
+    allowed_edits = user.get("allowedEdits", {"face": False, "academic": False, "personal": False})
 
     return {
         "message": "Login successful",
@@ -122,7 +133,11 @@ def login(credentials: UserLoginRequest):
             "faceEnrolled": user.get("faceEnrolled", True),
             "facePhotoUrl": user.get("facePhotoUrl", ""),
             "faceEmbedding": user.get("faceEmbedding", []),
-            "profileCompletion": user.get("profileCompletion", 85)
+            "profileCompletion": user.get("profileCompletion", 85),
+            "isBlocked": is_blocked,
+            "status": "blocked" if is_blocked else user.get("status", "approved"),
+            "allowedEdits": allowed_edits,
+            "initialEditDone": user.get("initialEditDone", False)
         }
     }
 
@@ -137,43 +152,103 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
 
+    old_user = users_col.find_one({"_id": obj_id})
+    if not old_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    diffs = []
+    def check_diff(field_label, old_val, new_val):
+        o_clean = str(old_val or "").strip()
+        n_clean = str(new_val or "").strip()
+        if n_clean and o_clean != n_clean:
+            diffs.append({
+                "field": field_label,
+                "oldValue": o_clean if o_clean else "(Not Set)",
+                "newValue": n_clean
+            })
+
     update_fields = {}
-    if req.fullName is not None: update_fields["fullName"] = req.fullName
-    if req.phone is not None: update_fields["phone"] = req.phone
-    if req.department is not None: update_fields["department"] = req.department
-    if req.programme is not None: update_fields["programme"] = req.programme
-    if req.semester is not None: update_fields["semester"] = req.semester
-    if req.academicYear is not None: update_fields["academicYear"] = req.academicYear
-    if req.collegeName is not None: update_fields["collegeName"] = req.collegeName
-    if req.dob is not None: update_fields["dob"] = req.dob
-    if req.bloodGroup is not None: update_fields["bloodGroup"] = req.bloodGroup
-    if req.permanentAddress is not None: update_fields["permanentAddress"] = req.permanentAddress
-    if req.guardianName is not None: update_fields["guardianName"] = req.guardianName
-    if req.guardianPhone is not None: update_fields["guardianPhone"] = req.guardianPhone
+    if req.fullName is not None:
+        check_diff("Full Name", old_user.get("fullName"), req.fullName)
+        update_fields["fullName"] = req.fullName
+    if req.phone is not None:
+        check_diff("Phone", old_user.get("phone"), req.phone)
+        update_fields["phone"] = req.phone
+    if req.department is not None:
+        check_diff("Department", old_user.get("department"), req.department)
+        update_fields["department"] = req.department
+    if req.programme is not None:
+        check_diff("Programme", old_user.get("programme"), req.programme)
+        update_fields["programme"] = req.programme
+    if req.semester is not None:
+        check_diff("Semester", old_user.get("semester"), req.semester)
+        update_fields["semester"] = req.semester
+    if req.academicYear is not None:
+        check_diff("Academic Year", old_user.get("academicYear"), req.academicYear)
+        update_fields["academicYear"] = req.academicYear
+    if req.collegeName is not None:
+        check_diff("College Name", old_user.get("collegeName"), req.collegeName)
+        update_fields["collegeName"] = req.collegeName
+    if req.dob is not None:
+        check_diff("Date of Birth", old_user.get("dob"), req.dob)
+        update_fields["dob"] = req.dob
+    if req.bloodGroup is not None:
+        check_diff("Blood Group", old_user.get("bloodGroup"), req.bloodGroup)
+        update_fields["bloodGroup"] = req.bloodGroup
+    if req.permanentAddress is not None:
+        check_diff("Permanent Address", old_user.get("permanentAddress"), req.permanentAddress)
+        update_fields["permanentAddress"] = req.permanentAddress
+    if req.guardianName is not None:
+        check_diff("Guardian Name", old_user.get("guardianName"), req.guardianName)
+        update_fields["guardianName"] = req.guardianName
+    if req.guardianPhone is not None:
+        check_diff("Guardian Phone", old_user.get("guardianPhone"), req.guardianPhone)
+        update_fields["guardianPhone"] = req.guardianPhone
     if req.profilePhotoUrl is not None and req.profilePhotoUrl.strip():
+        diffs.append({"field": "Profile Avatar", "oldValue": "Previous Avatar", "newValue": "Updated Profile Photo"})
         update_fields["profilePhotoUrl"] = req.profilePhotoUrl
     if req.facePhotoUrl is not None and req.facePhotoUrl.strip():
+        diffs.append({"field": "Facial Biometric Photo", "oldValue": "Previous Biometric Scan", "newValue": "Updated Biometric Face"})
         update_fields["facePhotoUrl"] = req.facePhotoUrl
         update_fields["faceEnrolled"] = True
     if req.faceEmbedding is not None and len(req.faceEmbedding) >= 128:
+        diffs.append({"field": "Biometric 192D Embedding", "oldValue": "Initial Enrolled Template", "newValue": "New 192D Mathematical Template"})
         update_fields["faceEmbedding"] = req.faceEmbedding
         update_fields["faceEnrolled"] = True
 
-    # If personal details like dob, bloodGroup, permanentAddress are filled, profile hits 100%!
+    # Check completeness
     is_complete = bool(
-        (req.dob or "").strip() and
-        (req.bloodGroup or "").strip() and
-        (req.permanentAddress or "").strip()
+        (req.dob or old_user.get("dob") or "").strip() and
+        (req.bloodGroup or old_user.get("bloodGroup") or "").strip() and
+        (req.permanentAddress or old_user.get("permanentAddress") or "").strip()
     )
     update_fields["profileCompletion"] = 100 if is_complete else 85
+    
+    # Mark 1st edit done and consume any granted permissions so profile re-locks
+    is_initial = not old_user.get("initialEditDone", False)
+    update_fields["initialEditDone"] = True
+    update_fields["allowedEdits"] = {"face": False, "academic": False, "personal": False}
 
-    res = users_col.update_one({"_id": obj_id}, {"$set": update_fields})
+    users_col.update_one({"_id": obj_id}, {"$set": update_fields})
     updated_user = users_col.find_one({"_id": obj_id})
     if not updated_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
+    # Record in Edit History audit log
+    if diffs:
+        db["edit_history"].insert_one({
+            "studentId": str(obj_id),
+            "studentName": updated_user.get("fullName", ""),
+            "rollNo": updated_user.get("rollNo", ""),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "changes": diffs,
+            "type": "Initial 1-Time Setup" if is_initial else "Admin-Authorized Update"
+        })
+
+    is_blocked = updated_user.get("isBlocked", False) or updated_user.get("status") == "blocked"
+
     return {
-        "message": "Profile updated successfully",
+        "message": "Profile updated successfully. Changes locked under admin policy.",
         "user": {
             "id": str(updated_user["_id"]),
             "fullName": updated_user.get("fullName", ""),
@@ -195,7 +270,35 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
             "faceEnrolled": updated_user.get("faceEnrolled", True),
             "facePhotoUrl": updated_user.get("facePhotoUrl", ""),
             "faceEmbedding": updated_user.get("faceEmbedding", []),
-            "profileCompletion": updated_user.get("profileCompletion", 100 if is_complete else 85)
+            "profileCompletion": updated_user.get("profileCompletion", 85),
+            "isBlocked": is_blocked,
+            "status": "blocked" if is_blocked else updated_user.get("status", "approved"),
+            "allowedEdits": updated_user.get("allowedEdits", {"face": False, "academic": False, "personal": False}),
+            "initialEditDone": True
         }
+    }
+
+@router.get("/status/{user_id}")
+def get_user_status(user_id: str):
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    user = users_col.find_one({"_id": obj_id})
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    is_blocked = user.get("isBlocked", False) or user.get("status") == "blocked"
+    return {
+        "isBlocked": is_blocked,
+        "isApproved": user.get("isApproved", True),
+        "status": "blocked" if is_blocked else user.get("status", "approved"),
+        "allowedEdits": user.get("allowedEdits", {"face": False, "academic": False, "personal": False}),
+        "initialEditDone": user.get("initialEditDone", False)
     }
 

@@ -1,5 +1,12 @@
 package com.example.labportal.data.model
 
+data class AllowedEditsDto(
+    val face: Boolean = false,
+    val academic: Boolean = false,
+    val personal: Boolean = false,
+    val initialEditDone: Boolean = false
+)
+
 data class UserData(
     val fullName: String,
     val email: String,
@@ -23,5 +30,9 @@ data class UserData(
     val bloodGroup: String = "",
     val permanentAddress: String = "",
     val guardianName: String = "",
-    val guardianPhone: String = ""
+    val guardianPhone: String = "",
+    val isBlocked: Boolean = false,
+    val status: String = "approved",
+    val allowedEdits: AllowedEditsDto = AllowedEditsDto(),
+    val initialEditDone: Boolean = false
 )

@@ -1,5 +1,16 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+
+class AllowedEdits(BaseModel):
+    face: bool = False
+    academic: bool = False
+    personal: bool = False
+    initialEditDone: bool = False
+
+class GrantPermissionsRequest(BaseModel):
+    face: bool = False
+    academic: bool = False
+    personal: bool = False
 
 class UserRegisterRequest(BaseModel):
     fullName: str
@@ -56,6 +67,10 @@ class UserResponse(BaseModel):
     facePhotoUrl: Optional[str] = ""
     faceEmbedding: Optional[List[float]] = None
     profileCompletion: Optional[int] = 80
+    isBlocked: Optional[bool] = False
+    status: Optional[str] = "approved"
+    allowedEdits: Optional[Dict[str, Any]] = None
+    initialEditDone: Optional[bool] = False
 
 class BiometricEnrollRequest(BaseModel):
     userId: str

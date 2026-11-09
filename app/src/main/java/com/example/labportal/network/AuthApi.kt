@@ -1,5 +1,6 @@
 package com.example.labportal.network
 
+import com.example.labportal.data.model.AllowedEditsDto
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -15,6 +16,36 @@ import java.util.concurrent.TimeUnit
 data class LoginRequest(
     val email: String,
     val password: String
+)
+
+data class GrantPermissionsDto(
+    val face: Boolean,
+    val academic: Boolean,
+    val personal: Boolean
+)
+
+data class FieldDiffDto(
+    val field: String,
+    val oldValue: String? = null,
+    val newValue: String? = null
+)
+
+data class EditHistoryRecordDto(
+    val id: String = "",
+    val studentId: String = "",
+    val studentName: String = "",
+    val rollNo: String = "",
+    val timestamp: String = "",
+    val changes: List<FieldDiffDto> = emptyList(),
+    val type: String = "Profile Edit"
+)
+
+data class UserStatusResponse(
+    val isBlocked: Boolean = false,
+    val isApproved: Boolean = true,
+    val status: String = "approved",
+    val allowedEdits: AllowedEditsDto = AllowedEditsDto(),
+    val initialEditDone: Boolean = false
 )
 
 data class RegisterRequest(
@@ -53,7 +84,11 @@ data class UserDto(
     val bloodGroup: String = "",
     val permanentAddress: String = "",
     val guardianName: String = "",
-    val guardianPhone: String = ""
+    val guardianPhone: String = "",
+    val isBlocked: Boolean = false,
+    val status: String = "approved",
+    val allowedEdits: AllowedEditsDto = AllowedEditsDto(),
+    val initialEditDone: Boolean = false
 )
 
 data class ProfileUpdateRequest(
@@ -98,6 +133,9 @@ data class StudentApprovalDto(
     val faceEmbedding: List<Float>? = null,
     @SerializedName("isApproved") val isApproved: Boolean = false,
     val status: String = "pending",
+    val isBlocked: Boolean = false,
+    val allowedEdits: AllowedEditsDto = AllowedEditsDto(),
+    val initialEditDone: Boolean = false,
     val createdAt: String? = null
 )
 
@@ -199,6 +237,24 @@ interface AuthApiService {
 
     @retrofit2.http.DELETE("api/admin/delete-student/{id}")
     suspend fun deleteStudentPermanently(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+
+    @POST("api/admin/student/{id}/block")
+    suspend fun blockStudent(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+
+    @POST("api/admin/student/{id}/unblock")
+    suspend fun unblockStudent(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+
+    @POST("api/admin/student/{id}/grant-permissions")
+    suspend fun grantStudentPermissions(
+        @retrofit2.http.Path("id") id: String,
+        @Body body: GrantPermissionsDto
+    ): Response<SimpleActionResponse>
+
+    @GET("api/admin/student/{id}/edit-history")
+    suspend fun getStudentEditHistory(@retrofit2.http.Path("id") id: String): Response<List<EditHistoryRecordDto>>
+
+    @GET("api/auth/status/{id}")
+    suspend fun getUserStatus(@retrofit2.http.Path("id") id: String): Response<UserStatusResponse>
 
 
     @GET("api/courses")

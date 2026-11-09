@@ -92,6 +92,8 @@ fun StudentProfileScreen(
     var showFullBiometricDialog by remember { mutableStateOf(false) }
     var showFullProfilePhotoDialog by remember { mutableStateOf(false) }
     var showAvatarPickerOptions by remember { mutableStateOf(false) }
+    var showLockedProfileAlert by remember { mutableStateOf(false) }
+    var showLockedFaceAlert by remember { mutableStateOf(false) }
 
     // Separate State: 1. Display Profile Avatar & 2. Official Biometric Face Template
     var currentProfilePhoto by remember {
@@ -301,7 +303,12 @@ fun StudentProfileScreen(
                     color = Color(0xFFEEF2FF),
                     border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
                     modifier = Modifier.clickable {
-                        showEditProfileDialog = true
+                        val canEdit = !user.initialEditDone || user.allowedEdits.personal || user.allowedEdits.academic
+                        if (canEdit) {
+                            showEditProfileDialog = true
+                        } else {
+                            showLockedProfileAlert = true
+                        }
                     }
                 ) {
                     Row(
@@ -687,7 +694,14 @@ fun StudentProfileScreen(
                         }
 
                         Button(
-                            onClick = { showLiveFaceScanner = true },
+                            onClick = {
+                                val canReEnroll = !user.initialEditDone || user.allowedEdits.face
+                                if (canReEnroll) {
+                                    showLiveFaceScanner = true
+                                } else {
+                                    showLockedFaceAlert = true
+                                }
+                            },
                             modifier = Modifier
                                 .weight(1.1f)
                                 .defaultMinSize(minHeight = 42.dp),
@@ -1482,6 +1496,90 @@ fun StudentProfileScreen(
                     }
                 }
             }
+        }
+
+        // Locked Profile Alert
+        if (showLockedProfileAlert) {
+            AlertDialog(
+                onDismissRequest = { showLockedProfileAlert = false },
+                icon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_lock),
+                        contentDescription = null,
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Profile Record Locked",
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = MmyrvTextDark,
+                        fontSize = 17.sp
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Official student academic and contact details are locked under university security regulations.\n\nTo update your information, please request your Department Administrator to grant update permissions from the Admin Panel.",
+                        fontFamily = AppFontFamily,
+                        fontSize = 13.sp,
+                        color = MmyrvTextMuted,
+                        lineHeight = 18.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showLockedProfileAlert = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Understood", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
+        // Locked Face Alert
+        if (showLockedFaceAlert) {
+            AlertDialog(
+                onDismissRequest = { showLockedFaceAlert = false },
+                icon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_face_recognition),
+                        contentDescription = null,
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Facial Recognition Key Locked",
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = MmyrvTextDark,
+                        fontSize = 17.sp
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Your registered 3D landmark face key is permanently locked to prevent unauthorized biometric substitution.\n\nTo re-enroll a new face scan, please contact the laboratory administrator to grant Facial Re-Enrollment permission in the Admin Panel.",
+                        fontFamily = AppFontFamily,
+                        fontSize = 13.sp,
+                        color = MmyrvTextMuted,
+                        lineHeight = 18.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showLockedFaceAlert = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = MmyrvPrimary),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Understood", fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
         }
 
         // 9. Screen-Lock Live Front Camera Biometric Scanner Modal

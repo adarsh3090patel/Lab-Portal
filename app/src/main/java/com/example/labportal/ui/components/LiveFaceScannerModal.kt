@@ -47,6 +47,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -414,6 +416,12 @@ fun LiveFaceScannerModal(
                                                                                 val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
                                                                                 onFaceVerified?.invoke(bitmap, base64, embedding, match.similarity)
                                                                                 onFaceCaptured?.invoke(bitmap, base64)
+
+                                                                                // Automatic Success: auto-dismiss after brief feedback, NO button click needed!
+                                                                                coroutineScope.launch {
+                                                                                    kotlinx.coroutines.delay(850)
+                                                                                    onDismiss()
+                                                                                }
                                                                             } else {
                                                                                 recognitionState = RecognitionState.UNKNOWN_PERSON
                                                                                 statusMessage = "Access Denied: Unrecognized Person (${match.percentage}% match)"
@@ -437,6 +445,12 @@ fun LiveFaceScannerModal(
                                                                                 val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
                                                                                 onFaceCaptured?.invoke(bitmap, base64)
                                                                                 onFaceVerified?.invoke(bitmap, base64, finalTemplate, 1.0f)
+
+                                                                                // Automatic Success: auto-dismiss after brief feedback, NO button click needed!
+                                                                                coroutineScope.launch {
+                                                                                    kotlinx.coroutines.delay(850)
+                                                                                    onDismiss()
+                                                                                }
                                                                             } else {
                                                                                 recognitionState = RecognitionState.PROCESSING_FACE
                                                                                 statusMessage = "Captured sample ${consentedSamples.size}/3... Hold steady"
@@ -558,79 +572,51 @@ fun LiveFaceScannerModal(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Manual Confirm / Retake Button
-                    Button(
-                        onClick = {
-                            if (isCompleted && verifiedBitmap != null) {
-                                val base64 = FaceDetectionHelper.bitmapToBase64(verifiedBitmap!!)
-                                if (verifiedEmbedding != null) {
-                                    onFaceVerified?.invoke(verifiedBitmap!!, base64, verifiedEmbedding!!, verifiedScore)
-                                }
-                                onFaceCaptured?.invoke(verifiedBitmap!!, base64)
-                                onDismiss()
-                            } else {
-                                // Trigger instant capture
-                                val bitmap = previewViewRef?.bitmap
-                                if (bitmap != null) {
-                                    coroutineScope.launch(Dispatchers.Default) {
-                                        val detectResult = engine.detectFace(bitmap)
-                                        if (detectResult.croppedFaceBitmap != null) {
-                                            val embedding = engine.generateEmbedding(detectResult.croppedFaceBitmap)
-                                            val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
-                                            withContext(Dispatchers.Main) {
-                                                onFaceCaptured?.invoke(bitmap, base64)
-                                                onFaceVerified?.invoke(bitmap, base64, embedding, 0.95f)
-                                                onDismiss()
-                                            }
-                                        } else {
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, detectResult.error ?: "No face detected", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                }
+                    // Automatic Completion Indicator / Cancel Button
+                    if (isCompleted) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF10B981)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_check_circle),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Verified Automatically • Success!",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
+                                    color = Color.White
+                                )
                             }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = hasCameraPermission && !isProcessingFrame,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isCompleted) Color(0xFF10B981) else MmyrvPrimary
-                        )
-                    ) {
-                        if (isProcessingFrame) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                        ) {
                             Text(
-                                text = "Analyzing AI Biometrics...",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = AppFontFamily
-                            )
-                        } else {
-                            Icon(
-                                painter = painterResource(
-                                    id = if (isCompleted) R.drawable.ic_check_circle else R.drawable.ic_face_recognition
-                                ),
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (isCompleted)
-                                    "Confirm Verified Biometrics"
-                                else
-                                    "Capture Screen-Lock Face",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = AppFontFamily
+                                text = "Cancel Face Scan",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = AppFontFamily,
+                                color = MmyrvTextMuted
                             )
                         }
                     }

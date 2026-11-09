@@ -302,7 +302,12 @@ fun FaceScanDialog(
                             scanSuccess = true
                             verificationError = null
                             verificationText = response.body()!!.message
-                            Toast.makeText(context, response.body()!!.message, Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, response.body()!!.message, Toast.LENGTH_SHORT).show()
+                            // Auto-dismiss automatically without needing to press Done button
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(1200)
+                                onDismiss()
+                            }
                         } else {
                             val err = response.errorBody()?.string() ?: "Attendance recording failed"
                             val cleanMsg = try {
@@ -313,7 +318,11 @@ fun FaceScanDialog(
                                 scanSuccess = true
                                 verificationError = null
                                 verificationText = cleanMsg
-                                Toast.makeText(context, cleanMsg, Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, cleanMsg, Toast.LENGTH_SHORT).show()
+                                coroutineScope.launch {
+                                    kotlinx.coroutines.delay(1200)
+                                    onDismiss()
+                                }
                             } else {
                                 scanSuccess = false
                                 verificationError = cleanMsg
@@ -324,7 +333,11 @@ fun FaceScanDialog(
                         isScanning = false
                         scanSuccess = true
                         verificationText = "Biometric Match Confirmed (Attendance recorded offline)"
-                        Toast.makeText(context, "Attendance Marked for Central Lab!", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Attendance Marked for Central Lab!", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            kotlinx.coroutines.delay(1200)
+                            onDismiss()
+                        }
                     }
                 }
             },

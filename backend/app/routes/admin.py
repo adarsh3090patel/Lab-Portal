@@ -1,7 +1,8 @@
+import datetime
 from fastapi import APIRouter, HTTPException, status
 from bson import ObjectId
 from app.database import get_database
-from app.models import CourseCreateRequest
+from app.models import CourseCreateRequest, GrantPermissionsRequest
 
 router = APIRouter(tags=["Admin Operations & Courses"])
 
@@ -160,6 +161,7 @@ def get_all_approved_students():
     
     result = []
     for s in students:
+        is_blocked = s.get("isBlocked", False) or s.get("status") == "blocked"
         result.append({
             "id": str(s["_id"]),
             "fullName": s.get("fullName", ""),
@@ -177,7 +179,10 @@ def get_all_approved_students():
             "facePhotoUrl": s.get("facePhotoUrl", ""),
             "faceEmbedding": s.get("faceEmbedding", []),
             "isApproved": True,
-            "status": "approved",
+            "isBlocked": is_blocked,
+            "status": "blocked" if is_blocked else s.get("status", "approved"),
+            "allowedEdits": s.get("allowedEdits", {"face": False, "academic": False, "personal": False}),
+            "initialEditDone": s.get("initialEditDone", False),
             "createdAt": s.get("createdAt", "Recent")
         })
     return result
@@ -261,5 +266,134 @@ def delete_student_permanently(user_id: str):
 
     res = users_col.delete_one({"_id": obj_id})
     return {"message": "Student record permanently deleted", "success": True}
+
+@router.post("/api/admin/student/{user_id}/block")
+@router.post("/api/admin/block-student/{user_id}")
+def block_student(user_id: str):
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    res = users_col.update_one({"_id": obj_id}, {"$set": {"isBlocked": True, "status": "blocked"}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+    
+    # Log blocking in edit history
+    student = users_col.find_one({"_id": obj_id})
+    if student:
+        db["edit_history"].insert_one({
+            "studentId": str(obj_id),
+            "studentName": student.get("fullName", ""),
+            "rollNo": student.get("rollNo", ""),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "changes": [{"field": "Account Status", "oldValue": "Active / Approved", "newValue": "Blocked by Administrator"}],
+            "type": "Admin Action"
+        })
+
+    return {"message": "Student account has been blocked successfully.", "success": True, "isBlocked": True}
+
+@router.post("/api/admin/student/{user_id}/unblock")
+@router.post("/api/admin/unblock-student/{user_id}")
+def unblock_student(user_id: str):
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    res = users_col.update_one({"_id": obj_id}, {"$set": {"isBlocked": False, "status": "approved"}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+    
+    # Log unblocking in edit history
+    student = users_col.find_one({"_id": obj_id})
+    if student:
+        db["edit_history"].insert_one({
+            "studentId": str(obj_id),
+            "studentName": student.get("fullName", ""),
+            "rollNo": student.get("rollNo", ""),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "changes": [{"field": "Account Status", "oldValue": "Blocked", "newValue": "Restored / Unblocked"}],
+            "type": "Admin Action"
+        })
+
+    return {"message": "Student account has been unblocked successfully.", "success": True, "isBlocked": False}
+
+@router.post("/api/admin/student/{user_id}/grant-permissions")
+def grant_update_permissions(user_id: str, req: GrantPermissionsRequest):
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
+    users_col = db["users"]
+    try:
+        obj_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    allowed = {
+        "face": req.face,
+        "academic": req.academic,
+        "personal": req.personal
+    }
+
+    res = users_col.update_one({"_id": obj_id}, {"$set": {"allowedEdits": allowed}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+    
+    student = users_col.find_one({"_id": obj_id})
+    granted_names = []
+    if req.face: granted_names.append("Facial Recognition")
+    if req.academic: granted_names.append("Academic Information")
+    if req.personal: granted_names.append("Contact & Personal Details")
+    
+    if student:
+        db["edit_history"].insert_one({
+            "studentId": str(obj_id),
+            "studentName": student.get("fullName", ""),
+            "rollNo": student.get("rollNo", ""),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "changes": [{
+                "field": "Admin Permissions Granted",
+                "oldValue": "Locked",
+                "newValue": f"1-time edit granted for: {', '.join(granted_names) if granted_names else 'None'}"
+            }],
+            "type": "Permission Grant"
+        })
+
+    return {
+        "message": f"Permissions updated! Student can update: {', '.join(granted_names) if granted_names else 'None'} once.",
+        "success": True,
+        "allowedEdits": allowed
+    }
+
+@router.get("/api/admin/student/{user_id}/edit-history")
+def get_student_edit_history(user_id: str):
+    db = get_database()
+    if db is None:
+        return []
+    history_col = db["edit_history"]
+    
+    # Query by string id or object id
+    records = list(history_col.find({"studentId": user_id}).sort("timestamp", -1))
+    result = []
+    for r in records:
+        result.append({
+            "id": str(r["_id"]),
+            "studentId": r.get("studentId", ""),
+            "studentName": r.get("studentName", ""),
+            "rollNo": r.get("rollNo", ""),
+            "timestamp": r.get("timestamp", ""),
+            "changes": r.get("changes", []),
+            "type": r.get("type", "Profile Edit")
+        })
+    return result
 
 
