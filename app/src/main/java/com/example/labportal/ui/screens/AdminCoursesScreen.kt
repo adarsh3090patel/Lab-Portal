@@ -73,6 +73,7 @@ import kotlinx.coroutines.launch
 
 object CourseCache {
     var list: List<CourseDto> = emptyList()
+    var hasFetchedFromNetwork: Boolean = false
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,7 +89,9 @@ fun AdminCoursesScreen(
     // Instant 0ms loading from in-memory cache or default static courses
     val coursesList = remember {
         mutableStateListOf<CourseDto>().apply {
-            if (CourseCache.list.isNotEmpty()) {
+            if (CourseCache.hasFetchedFromNetwork) {
+                addAll(CourseCache.list)
+            } else if (CourseCache.list.isNotEmpty()) {
                 addAll(CourseCache.list)
             } else {
                 addAll(defaultStaticCourses())
@@ -103,9 +106,10 @@ fun AdminCoursesScreen(
             try {
                 val res = NetworkClient.apiService.getCourses()
                 isRefreshing = false
-                if (res.isSuccessful && !res.body().isNullOrEmpty()) {
+                if (res.isSuccessful && res.body() != null) {
                     val fresh = res.body()!!
                     CourseCache.list = fresh
+                    CourseCache.hasFetchedFromNetwork = true
                     coursesList.clear()
                     coursesList.addAll(fresh)
                 }
@@ -297,12 +301,30 @@ fun AdminCoursesScreen(
                             onDelete = { onFinish ->
                                 coroutineScope.launch {
                                     try {
-                                        NetworkClient.apiService.deleteCourse(course.id)
-                                    } catch (_: Exception) {}
-                                    coursesList.removeAll { it.id == course.id }
-                                    CourseCache.list = coursesList.toList()
-                                    Toast.makeText(context, "${course.name} removed", Toast.LENGTH_SHORT).show()
-                                    onFinish()
+                                        val res = NetworkClient.apiService.deleteCourse(
+                                            id = course.id,
+                                            name = course.name,
+                                            code = course.code
+                                        )
+                                        if (res.isSuccessful) {
+                                            coursesList.removeAll {
+                                                it.id == course.id ||
+                                                it.code.equals(course.code, ignoreCase = true) ||
+                                                it.name.equals(course.name, ignoreCase = true)
+                                            }
+                                            CourseCache.list = coursesList.toList()
+                                            Toast.makeText(context, "${course.name} deleted from database.", Toast.LENGTH_SHORT).show()
+                                            // Synchronize directly with MongoDB Atlas
+                                            loadCourses(showSpinner = false)
+                                        } else {
+                                            val err = res.errorBody()?.string() ?: res.message()
+                                            Toast.makeText(context, "Failed to delete from database: $err", Toast.LENGTH_LONG).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Network error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        onFinish()
+                                    }
                                 }
                             }
                         )
@@ -335,22 +357,30 @@ fun AdminCoursesScreen(
                 )
 
                 coroutineScope.launch {
-                    val newCourse = CourseDto(
-                        id = "c_${System.currentTimeMillis()}",
-                        name = name,
-                        code = code,
-                        semesters = generatedSemesters,
-                        facultyName = facultyName
-                    )
                     try {
-                        NetworkClient.apiService.addCourse(newDto)
-                    } catch (_: Exception) {}
-
-                    coursesList.add(0, newCourse)
-                    CourseCache.list = coursesList.toList()
-                    onDone()
-                    showAddCourseSheet = false
-                    Toast.makeText(context, "Added $name successfully!", Toast.LENGTH_SHORT).show()
+                        val res = NetworkClient.apiService.addCourse(newDto)
+                        onDone()
+                        if (res.isSuccessful) {
+                            val created = res.body()?.course ?: CourseDto(
+                                id = "c_${System.currentTimeMillis()}",
+                                name = name,
+                                code = code,
+                                semesters = generatedSemesters,
+                                facultyName = facultyName
+                            )
+                            coursesList.add(0, created)
+                            CourseCache.list = coursesList.toList()
+                            showAddCourseSheet = false
+                            Toast.makeText(context, "Added '$name' directly to MongoDB!", Toast.LENGTH_SHORT).show()
+                            loadCourses(showSpinner = false)
+                        } else {
+                            val err = res.errorBody()?.string() ?: res.message()
+                            Toast.makeText(context, "Database error: $err", Toast.LENGTH_LONG).show()
+                        }
+                    } catch (e: Exception) {
+                        onDone()
+                        Toast.makeText(context, "Network error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         )

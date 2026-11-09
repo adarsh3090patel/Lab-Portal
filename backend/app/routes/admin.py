@@ -51,9 +51,14 @@ def get_all_courses():
     if db is None:
         return DEFAULT_COURSES
     courses_col = db["courses"]
+    config_col = db["system_config"]
+    
+    sys_conf = config_col.find_one({"key": "courses_config"})
     courses = list(courses_col.find())
-    if not courses:
-        # Fast bulk insert seed default courses
+    
+    # ONLY seed on first launch if system was never initialized
+    # If admin explicitly modified or deleted courses, NEVER re-seed deleted courses!
+    if not courses and not sys_conf:
         docs = []
         for c in DEFAULT_COURSES:
             c_copy = dict(c)
@@ -61,6 +66,7 @@ def get_all_courses():
             docs.append(c_copy)
         if docs:
             courses_col.insert_many(docs)
+        config_col.insert_one({"key": "courses_config", "initialized": True})
         courses = list(courses_col.find())
     
     result = []
@@ -80,41 +86,95 @@ def add_new_course(req: CourseCreateRequest):
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     courses_col = db["courses"]
-    existing = courses_col.find_one({"name": {"$regex": f"^{req.name}$", "$options": "i"}})
+    config_col = db["system_config"]
+    
+    # Mark as initialized so empty catalog won't auto-re-seed
+    config_col.update_one({"key": "courses_config"}, {"$set": {"initialized": True}}, upsert=True)
+    
+    clean_name = req.name.strip()
+    clean_code = req.code.strip().upper()
+    existing = courses_col.find_one({
+        "$or": [
+            {"name": {"$regex": f"^{clean_name}$", "$options": "i"}},
+            {"code": {"$regex": f"^{clean_code}$", "$options": "i"}}
+        ]
+    })
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A course with this name already exists.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Course with name '{clean_name}' or code '{clean_code}' already exists.")
     
     new_course = {
-        "name": req.name.strip(),
-        "code": req.code.strip().upper(),
+        "name": clean_name,
+        "code": clean_code,
         "semesters": req.semesters,
         "facultyName": (req.facultyName or "Faculty of Engineering & Technology").strip()
     }
     result = courses_col.insert_one(new_course)
     return {
-        "message": "Course created successfully",
+        "message": "Course created successfully in MongoDB",
+        "success": True,
         "course": {
             "id": str(result.inserted_id),
-            "name": req.name,
-            "code": req.code,
+            "name": clean_name,
+            "code": clean_code,
             "semesters": req.semesters,
-            "facultyName": req.facultyName
+            "facultyName": new_course["facultyName"]
         }
     }
 
 @router.delete("/api/admin/courses/{course_id}")
-def delete_course(course_id: str):
+def delete_course(course_id: str, name: str = None, code: str = None):
     db = get_database()
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     courses_col = db["courses"]
-    try:
-        obj_id = ObjectId(course_id)
-        res = courses_col.delete_one({"_id": obj_id})
-    except Exception:
-        res = courses_col.delete_one({"code": course_id})
+    config_col = db["system_config"]
     
-    return {"message": "Course removed successfully", "success": True}
+    # Mark that admin explicitly modified courses, never re-seed deleted courses
+    config_col.update_one(
+        {"key": "courses_config"},
+        {"$set": {"initialized": True, "last_updated": datetime.datetime.now(datetime.timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+    STATIC_CODE_MAP = {
+        "c1": "BSCCS",
+        "course_bsc_cs": "BSCCS",
+        "c2": "BCA",
+        "course_bca": "BCA",
+        "c3": "BTECH-CSE",
+        "course_btech_cse": "BTECH-CSE",
+        "c4": "MSCIT",
+        "course_msc_it": "MSCIT",
+        "c5": "MCA",
+        "course_mca": "MCA"
+    }
+
+    clean_id = (course_id or "").strip()
+    or_clauses = []
+    
+    if ObjectId.is_valid(clean_id):
+        or_clauses.append({"_id": ObjectId(clean_id)})
+    
+    or_clauses.append({"_id": clean_id})
+    or_clauses.append({"code": {"$regex": f"^{clean_id}$", "$options": "i"}})
+    or_clauses.append({"name": {"$regex": f"^{clean_id}$", "$options": "i"}})
+    
+    if clean_id in STATIC_CODE_MAP:
+        mapped = STATIC_CODE_MAP[clean_id]
+        or_clauses.append({"code": {"$regex": f"^{mapped}$", "$options": "i"}})
+        
+    if name and name.strip():
+        or_clauses.append({"name": {"$regex": f"^{name.strip()}$", "$options": "i"}})
+    if code and code.strip():
+        or_clauses.append({"code": {"$regex": f"^{code.strip()}$", "$options": "i"}})
+        
+    del_res = courses_col.delete_many({"$or": or_clauses})
+    
+    return {
+        "message": f"Course deleted successfully. {del_res.deleted_count} removed from MongoDB.",
+        "success": True,
+        "deleted_count": del_res.deleted_count
+    }
 
 @router.get("/api/admin/students")
 def get_all_students_for_approval():
@@ -269,8 +329,15 @@ def delete_student_permanently(user_id: str):
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
 
-    users_col.delete_one({"_id": student["_id"]})
-    return {"message": "Student record permanently deleted", "success": True}
+    obj_id = student["_id"]
+    roll_no = student.get("rollNo", "")
+    users_col.delete_one({"_id": obj_id})
+    
+    # Also clean up attendance records and edit history immediately from MongoDB Atlas
+    db["attendance"].delete_many({"$or": [{"studentId": str(obj_id)}, {"rollNo": roll_no}]})
+    db["edit_history"].delete_many({"$or": [{"studentId": str(obj_id)}, {"rollNo": roll_no}]})
+    
+    return {"message": "Student record, attendance, and audit history permanently erased from database", "success": True}
 
 @router.post("/api/admin/student/{user_id}/block")
 @router.post("/api/admin/block-student/{user_id}")

@@ -208,6 +208,12 @@ data class CourseCreateDto(
     val facultyName: String = "Faculty of Engineering & Technology"
 )
 
+data class AddCourseResponse(
+    val message: String,
+    val success: Boolean = true,
+    val course: CourseDto? = null
+)
+
 data class HealthResponse(
     val status: String,
     val database: String
@@ -267,10 +273,14 @@ interface AuthApiService {
     ): Response<AuthResponse>
 
     @POST("api/admin/courses")
-    suspend fun addCourse(@Body body: CourseCreateDto): Response<SimpleActionResponse>
+    suspend fun addCourse(@Body body: CourseCreateDto): Response<AddCourseResponse>
 
     @retrofit2.http.DELETE("api/admin/courses/{id}")
-    suspend fun deleteCourse(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+    suspend fun deleteCourse(
+        @retrofit2.http.Path("id") id: String,
+        @retrofit2.http.Query("name") name: String? = null,
+        @retrofit2.http.Query("code") code: String? = null
+    ): Response<SimpleActionResponse>
 
     @POST("api/biometric/enroll")
     suspend fun enrollBiometricTemplate(@Body body: BiometricEnrollDto): Response<SimpleActionResponse>

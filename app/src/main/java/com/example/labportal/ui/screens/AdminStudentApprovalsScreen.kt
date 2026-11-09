@@ -353,25 +353,40 @@ fun AdminStudentApprovalsScreen(
                             onApprove = { onFinish ->
                                 coroutineScope.launch {
                                     try {
-                                        NetworkClient.apiService.approveStudent(student.id)
-                                    } catch (_: Exception) {}
-                                    // Update state locally
-                                    val idx = studentsList.indexOfFirst { it.id == student.id }
-                                    if (idx != -1) {
-                                        studentsList[idx] = student.copy(isApproved = true)
+                                        val res = NetworkClient.apiService.approveStudent(student.id)
+                                        if (res.isSuccessful) {
+                                            val idx = studentsList.indexOfFirst { it.id == student.id }
+                                            if (idx != -1) {
+                                                studentsList[idx] = student.copy(isApproved = true, status = "approved")
+                                            }
+                                            ApprovedStudentsCache.list = ApprovedStudentsCache.list.filter { it.id != student.id } + student.copy(isApproved = true, status = "approved")
+                                            Toast.makeText(context, "${student.fullName} has been approved in database!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Database error: ${res.message()}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Network error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        onFinish()
                                     }
-                                    Toast.makeText(context, "${student.fullName} has been approved!", Toast.LENGTH_SHORT).show()
-                                    onFinish()
                                 }
                             },
                             onReject = { onFinish ->
                                 coroutineScope.launch {
                                     try {
-                                        NetworkClient.apiService.rejectStudent(student.id)
-                                    } catch (_: Exception) {}
-                                    studentsList.removeAll { it.id == student.id }
-                                    Toast.makeText(context, "${student.fullName} rejected and removed", Toast.LENGTH_SHORT).show()
-                                    onFinish()
+                                        val res = NetworkClient.apiService.rejectStudent(student.id)
+                                        if (res.isSuccessful) {
+                                            studentsList.removeAll { it.id == student.id }
+                                            RejectedStudentsCache.list = RejectedStudentsCache.list.filter { it.id != student.id } + student.copy(isApproved = false, status = "rejected")
+                                            Toast.makeText(context, "${student.fullName} marked as rejected in database.", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Database error: ${res.message()}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Network error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        onFinish()
+                                    }
                                 }
                             }
                         )
