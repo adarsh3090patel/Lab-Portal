@@ -255,19 +255,13 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
     )
     update_fields["profileCompletion"] = 100 if is_complete else 85
     
-    # 1-time section permission consumption
+    # 1-TIME EDIT RULE: Whenever ANY update is submitted by the student,
+    # immediately lock all permissions and mark initialEditDone = True!
+    # The student gets strictly 1 single edit session per admin approval.
+    # It locks automatically so the admin never has to manually lock it.
     is_initial = not old_user.get("initialEditDone", False)
-    allowed_edits = dict(old_user.get("allowedEdits", {"face": False, "academic": False, "personal": False}))
-    
-    if personal_changed:
-        allowed_edits["personal"] = False
-    if academic_changed:
-        allowed_edits["academic"] = False
-    if face_changed:
-        allowed_edits["face"] = False
-
     update_fields["initialEditDone"] = True
-    update_fields["allowedEdits"] = allowed_edits
+    update_fields["allowedEdits"] = {"face": False, "academic": False, "personal": False}
 
     users_col.update_one({"_id": obj_id}, {"$set": update_fields})
     updated_user = users_col.find_one({"_id": obj_id})
@@ -313,7 +307,7 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
             "profileCompletion": updated_user.get("profileCompletion", 85),
             "isBlocked": is_blocked,
             "status": "blocked" if is_blocked else updated_user.get("status", "approved"),
-            "allowedEdits": allowed_edits,
+            "allowedEdits": {"face": False, "academic": False, "personal": False},
             "initialEditDone": True
         }
     }

@@ -123,11 +123,12 @@ fun StudentProfileScreen(
     var guardianNameInput by remember { mutableStateOf(user.guardianName) }
     var guardianPhoneInput by remember { mutableStateOf(user.guardianPhone) }
 
-    // Permissions check
+    // Permissions check: Face is strictly locked and ONLY editable if Admin granted face permission!
+    // Academic & Personal can be edited once after registration, then strictly locked until Admin permission.
     val isFirstTimeSetup = !currentInitialEditDone
     val canEditAcademic = isFirstTimeSetup || currentAllowedEdits.academic
     val canEditPersonal = isFirstTimeSetup || currentAllowedEdits.personal
-    val canEditFace = isFirstTimeSetup || currentAllowedEdits.face
+    val canEditFace = currentAllowedEdits.face
     val canEditAnyProfile = canEditAcademic || canEditPersonal
 
     // Fetch latest user status and admin-granted permissions from MongoDB Atlas
@@ -234,6 +235,8 @@ fun StudentProfileScreen(
                 }
             } catch (e: Exception) {
                 isSaving = false
+                currentAllowedEdits = com.example.labportal.data.model.AllowedEditsDto(face = false, academic = false, personal = false)
+                currentInitialEditDone = true
                 val isComplete = dobInput.isNotBlank() && bloodGroupInput.isNotBlank() && addressInput.isNotBlank()
                 val updatedUser = user.copy(
                     fullName = fullNameInput.trim().ifBlank { user.fullName },
@@ -245,7 +248,9 @@ fun StudentProfileScreen(
                     guardianPhone = guardianPhoneInput.trim(),
                     profilePhotoUrl = targetProfile,
                     facePhotoUrl = targetBiometric,
-                    profileCompletion = if (isComplete) 100 else 85
+                    profileCompletion = if (isComplete) 100 else 85,
+                    allowedEdits = com.example.labportal.data.model.AllowedEditsDto(face = false, academic = false, personal = false),
+                    initialEditDone = true
                 )
                 onProfileUpdated(updatedUser)
                 isEditMode = false
@@ -584,7 +589,13 @@ fun StudentProfileScreen(
                         }
 
                         Button(
-                            onClick = { showAvatarPickerOptions = true },
+                            onClick = {
+                                if (canEditPersonal) {
+                                    showAvatarPickerOptions = true
+                                } else {
+                                    showLockedProfileAlert = true
+                                }
+                            },
                             modifier = Modifier
                                 .weight(1f)
                                 .defaultMinSize(minHeight = 44.dp),
@@ -697,13 +708,13 @@ fun StudentProfileScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFFDCFCE7)
+                                    color = if (canEditFace) Color(0xFFDCFCE7) else Color(0xFFF1F5F9)
                                 ) {
                                     Text(
-                                        text = "STRICT LOCK",
+                                        text = if (canEditFace) "1-TIME RE-ENROLL UNLOCKED" else "LOCKED (ADMIN ONLY)",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF15803D),
+                                        color = if (canEditFace) Color(0xFF15803D) else Color(0xFF64748B),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -721,65 +732,112 @@ fun StudentProfileScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                    if (canEditFace) {
+                        // Admin explicitly granted Facial Recognition permission! Show Re-Enroll Face button.
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFECFDF5))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_check_circle),
+                                contentDescription = null,
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Admin Permission Active: 1-Time Re-Enrollment Permitted",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = AppFontFamily,
+                                color = Color(0xFF047857)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { showFullBiometricDialog = true },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .defaultMinSize(minHeight = 42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_visibility),
+                                    contentDescription = null,
+                                    tint = MmyrvTextDark,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "View Biometric",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
+                                    color = MmyrvTextDark,
+                                    maxLines = 1
+                                )
+                            }
+
+                            Button(
+                                onClick = { showLiveFaceScanner = true },
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .defaultMinSize(minHeight = 42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_camera),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Re-Enroll Face",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
+                                    color = Color.White,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    } else {
+                        // Locked: NO Re-Enroll option appears without Admin Permission! Only View Biometric!
                         OutlinedButton(
                             onClick = { showFullBiometricDialog = true },
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .defaultMinSize(minHeight = 42.dp),
                             shape = RoundedCornerShape(10.dp),
                             border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_visibility),
                                 contentDescription = null,
                                 tint = MmyrvTextDark,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "View Biometric",
-                                fontSize = 11.5.sp,
+                                text = "View Biometric Face Key",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily,
-                                color = MmyrvTextDark,
-                                maxLines = 1
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                if (canEditFace) {
-                                    showLiveFaceScanner = true
-                                } else {
-                                    showLockedFaceAlert = true
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(1.1f)
-                                .defaultMinSize(minHeight = 42.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_camera),
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Re-Enroll Face",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = AppFontFamily,
-                                color = Color.White,
-                                maxLines = 1
+                                color = MmyrvTextDark
                             )
                         }
                     }

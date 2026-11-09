@@ -44,7 +44,9 @@ def enroll_biometric_template(req: BiometricEnrollRequest):
     update_doc = {
         "faceEnrolled": True,
         "faceEmbedding": req.faceEmbedding,
-        "biometricEnrolledAt": datetime.datetime.utcnow().isoformat()
+        "biometricEnrolledAt": datetime.datetime.utcnow().isoformat(),
+        "allowedEdits": {"face": False, "academic": False, "personal": False},
+        "initialEditDone": True
     }
     if req.facePhotoUrl:
         update_doc["facePhotoUrl"] = req.facePhotoUrl
