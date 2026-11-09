@@ -41,6 +41,7 @@ def register(user_data: UserRegisterRequest):
         "profilePhotoUrl": user_data.profilePhotoUrl or user_data.facePhotoUrl,
         "faceEnrolled": user_data.faceEnrolled,
         "facePhotoUrl": user_data.facePhotoUrl,
+        "faceEmbedding": user_data.faceEmbedding or [],
         "password": hash_password(user_data.password),
         "isApproved": True if is_admin else False,
         "profileCompletion": 85
@@ -63,6 +64,7 @@ def register(user_data: UserRegisterRequest):
             "profilePhotoUrl": user_data.profilePhotoUrl or user_data.facePhotoUrl,
             "faceEnrolled": user_data.faceEnrolled,
             "facePhotoUrl": user_data.facePhotoUrl,
+            "faceEmbedding": user_data.faceEmbedding or [],
             "profileCompletion": 85
         }
     }
@@ -119,6 +121,7 @@ def login(credentials: UserLoginRequest):
             "profilePhotoUrl": user.get("profilePhotoUrl", user.get("facePhotoUrl", "")),
             "faceEnrolled": user.get("faceEnrolled", True),
             "facePhotoUrl": user.get("facePhotoUrl", ""),
+            "faceEmbedding": user.get("faceEmbedding", []),
             "profileCompletion": user.get("profileCompletion", 85)
         }
     }
@@ -151,6 +154,9 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
         update_fields["profilePhotoUrl"] = req.profilePhotoUrl
     if req.facePhotoUrl is not None and req.facePhotoUrl.strip():
         update_fields["facePhotoUrl"] = req.facePhotoUrl
+        update_fields["faceEnrolled"] = True
+    if req.faceEmbedding is not None and len(req.faceEmbedding) >= 128:
+        update_fields["faceEmbedding"] = req.faceEmbedding
         update_fields["faceEnrolled"] = True
 
     # If personal details like dob, bloodGroup, permanentAddress are filled, profile hits 100%!
@@ -188,6 +194,7 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
             "profilePhotoUrl": updated_user.get("profilePhotoUrl", updated_user.get("facePhotoUrl", "")),
             "faceEnrolled": updated_user.get("faceEnrolled", True),
             "facePhotoUrl": updated_user.get("facePhotoUrl", ""),
+            "faceEmbedding": updated_user.get("faceEmbedding", []),
             "profileCompletion": updated_user.get("profileCompletion", 100 if is_complete else 85)
         }
     }

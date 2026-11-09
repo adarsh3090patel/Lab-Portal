@@ -118,6 +118,7 @@ fun StudentProfileScreen(
     fun saveProfileToDatabase(
         newProfilePhoto: String? = null,
         newBiometricPhoto: String? = null,
+        newEmbedding: List<Float>? = null,
         onSuccess: (() -> Unit)? = null
     ) {
         val targetProfile = newProfilePhoto ?: currentProfilePhoto
@@ -136,7 +137,8 @@ fun StudentProfileScreen(
                     guardianName = guardianNameInput.trim(),
                     guardianPhone = guardianPhoneInput.trim(),
                     profilePhotoUrl = if (targetProfile.isNotBlank()) targetProfile else null,
-                    facePhotoUrl = if (targetBiometric.isNotBlank()) targetBiometric else null
+                    facePhotoUrl = if (targetBiometric.isNotBlank()) targetBiometric else null,
+                    faceEmbedding = newEmbedding
                 )
 
                 val response = NetworkClient.apiService.updateProfile(userId, req)
@@ -154,6 +156,7 @@ fun StudentProfileScreen(
                         guardianPhone = updatedDto.guardianPhone,
                         profilePhotoUrl = updatedDto.profilePhotoUrl,
                         facePhotoUrl = updatedDto.facePhotoUrl,
+                        faceEmbedding = updatedDto.faceEmbedding ?: (newEmbedding ?: user.faceEmbedding),
                         profileCompletion = updatedDto.profileCompletion
                     )
                     currentProfilePhoto = updatedDto.profilePhotoUrl
@@ -1352,8 +1355,16 @@ fun StudentProfileScreen(
         if (showLiveFaceScanner) {
             LiveFaceScannerModal(
                 title = "Screen-Lock Biometric Scanner",
-                subtitle = "Strict AI 3D Landmark & Liveness Check",
+                subtitle = "AI MobileFaceNet 3D Landmark & Liveness Check",
                 registeredBase64 = currentBiometricPhoto,
+                enrolledEmbedding = user.faceEmbedding.ifEmpty { null },
+                expectedStudentName = fullNameInput.ifBlank { user.fullName },
+                expectedRollNo = user.rollNo,
+                onFaceVerified = { _, base64, embedding, _ ->
+                    showLiveFaceScanner = false
+                    currentBiometricPhoto = base64
+                    saveProfileToDatabase(newBiometricPhoto = base64, newEmbedding = embedding.toList())
+                },
                 onFaceCaptured = { _, base64 ->
                     showLiveFaceScanner = false
                     currentBiometricPhoto = base64

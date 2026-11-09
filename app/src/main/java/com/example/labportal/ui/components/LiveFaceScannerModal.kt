@@ -16,7 +16,6 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -75,6 +74,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import com.example.labportal.R
+import com.example.labportal.ai.FaceRecognitionEngine
+import com.example.labportal.ai.LivenessDetector
+import com.example.labportal.ai.LivenessState
 import com.example.labportal.ui.theme.AppFontFamily
 import com.example.labportal.ui.theme.MmyrvPrimary
 import com.example.labportal.ui.theme.MmyrvTextDark
@@ -83,20 +85,23 @@ import com.example.labportal.util.FaceDetectionHelper
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
-import kotlin.math.abs
 
-enum class LiveFaceFeedback(val text: String, val color: Color) {
-    ALIGN("Align face inside biometric target oval", Color(0xFFF59E0B)),
-    LOOK_STRAIGHT("Look directly at screen (0° straight gaze)", Color(0xFFF59E0B)),
-    OPEN_EYES("Keep both eyes wide open (Liveness Check)", Color(0xFFEF4444)),
-    CENTER("Center face in the middle of scanner", Color(0xFFF59E0B)),
-    TOO_FAR("Bring camera closer to your face", Color(0xFF38BDF8)),
-    MULTIPLE_FACES("Only 1 face permitted (Screen Lock Rule)", Color(0xFFEF4444)),
-    HOLD_STILL("Screen Lock scanning... Hold steady", Color(0xFF38BDF8)),
-    LOCKED("Biometric Face Locked (100% Screen-Lock Match)", Color(0xFF10B981))
+enum class RecognitionState(val label: String, val color: Color) {
+    INITIALIZING_CAMERA("Initializing Camera & AI Engine...", Color(0xFF64748B)),
+    POSITION_YOUR_FACE("Position Your Face Inside Oval", Color(0xFFF59E0B)),
+    FACE_DETECTED("Face Detected • Checking Orientation", Color(0xFF38BDF8)),
+    CHECKING_IMAGE_QUALITY("Checking Image Quality & Lighting", Color(0xFFF59E0B)),
+    PROMPT_BLINK("Please blink your eyes naturally (Liveness Check)", Color(0xFFEF4444)),
+    PROCESSING_FACE("Processing Face • Extracting 192D Embeddings", Color(0xFF818CF8)),
+    MATCHING_IDENTITY("Matching Identity Against University Database", Color(0xFF38BDF8)),
+    IDENTITY_VERIFIED("Identity Verified (Screen-Lock Confirmed)", Color(0xFF10B981)),
+    UNKNOWN_PERSON("Unknown Person: Face does not match registered student", Color(0xFFEF4444)),
+    MULTIPLE_FACES_DETECTED("Multiple Faces Detected! Only 1 person permitted", Color(0xFFEF4444)),
+    RECOGNITION_FAILED("Recognition Failed. Please try again in good lighting", Color(0xFFEF4444))
 }
 
 @Composable
@@ -104,14 +109,21 @@ fun LiveFaceScannerModal(
     title: String = "Screen-Lock Biometric Scanner",
     subtitle: String = "AI 3D Landmark & Liveness Security",
     registeredBase64: String = "",
-    onFaceCaptured: (bitmap: Bitmap, base64: String) -> Unit,
+    enrolledEmbedding: List<Float>? = null,
+    expectedStudentName: String? = null,
+    expectedRollNo: String? = null,
+    onFaceCaptured: ((bitmap: Bitmap, base64: String) -> Unit)? = null,
+    onFaceVerified: ((bitmap: Bitmap, base64: String, embedding: FloatArray, similarityScore: Float) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
 
-    // 1. In-App Camera Runtime Permission Self-Request
+    val engine = remember { FaceRecognitionEngine.getInstance(context) }
+    val livenessDetector = remember { LivenessDetector() }
+
+    // Camera permission check
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -133,40 +145,34 @@ fun LiveFaceScannerModal(
         }
     }
 
-    var liveFeedback by remember { mutableStateOf(LiveFaceFeedback.ALIGN) }
-    var isFaceLocked by remember { mutableStateOf(false) }
-    var isCapturing by remember { mutableStateOf(false) }
-    var lockProgress by remember { mutableStateOf(0f) }
+    var recognitionState by remember { mutableStateOf(RecognitionState.INITIALIZING_CAMERA) }
+    var statusMessage by remember { mutableStateOf(recognitionState.label) }
+    var isProcessingFrame by remember { mutableStateOf(false) }
+    var isCompleted by remember { mutableStateOf(false) }
+    var progressFraction by remember { mutableStateOf(0f) }
+
+    var verifiedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var verifiedEmbedding by remember { mutableStateOf<FloatArray?>(null) }
+    var verifiedScore by remember { mutableStateOf(0f) }
+
+    val consentedSamples = remember { mutableListOf<FloatArray>() }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
-    var captureError by remember { mutableStateOf<String?>(null) }
-
-    // Steady lock progress ticker
-    LaunchedEffect(isFaceLocked) {
-        if (isFaceLocked) {
-            while (lockProgress < 1f) {
-                delay(120)
-                lockProgress = (lockProgress + 0.25f).coerceAtMost(1f)
-            }
-        } else {
-            lockProgress = 0f
-        }
-    }
-
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
     DisposableEffect(Unit) {
         onDispose {
             cameraExecutor.shutdown()
+            livenessDetector.reset()
         }
     }
 
     val animatedFrameColor by animateColorAsState(
-        targetValue = liveFeedback.color,
+        targetValue = recognitionState.color,
         animationSpec = tween(300),
         label = "frameColor"
     )
 
-    // Futuristic Laser Scan Animation
+    // Laser sweep animation
     val infiniteTransition = rememberInfiniteTransition(label = "laserScanner")
     val laserYOffset by infiniteTransition.animateFloat(
         initialValue = -110f,
@@ -201,7 +207,7 @@ fun LiveFaceScannerModal(
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Header with Biometric Shield Icon
+                    // Header
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -253,7 +259,6 @@ fun LiveFaceScannerModal(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     if (!hasCameraPermission) {
-                        // Permission Fallback Card
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -298,7 +303,7 @@ fun LiveFaceScannerModal(
                             }
                         }
                     } else {
-                        // Real-Time Front Camera Scanner Feed (Screen-Lock Oval View)
+                        // Real-Time Camera Feed Viewport
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -328,7 +333,6 @@ fun LiveFaceScannerModal(
                                             it.setSurfaceProvider(previewView.surfaceProvider)
                                         }
 
-                                        // Strict Screen-Lock Real-Time Analyzer
                                         val detectorOptions = FaceDetectorOptions.Builder()
                                             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                                             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
@@ -341,10 +345,117 @@ fun LiveFaceScannerModal(
                                             .build()
 
                                         imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                                            processLiveFrame(imageProxy, liveDetector) { feedback, locked ->
-                                                liveFeedback = feedback
-                                                isFaceLocked = locked
+                                            if (isCompleted || isProcessingFrame) {
+                                                imageProxy.close()
+                                                return@setAnalyzer
                                             }
+
+                                            processCameraFrame(
+                                                imageProxy = imageProxy,
+                                                detector = liveDetector,
+                                                livenessDetector = livenessDetector,
+                                                onStateChange = { newState, msg ->
+                                                    coroutineScope.launch(Dispatchers.Main) {
+                                                        recognitionState = newState
+                                                        statusMessage = msg
+                                                    }
+                                                },
+                                                onReadyForInference = {
+                                                    val bitmap = previewView.bitmap
+                                                    if (bitmap != null && !isProcessingFrame && !isCompleted) {
+                                                        isProcessingFrame = true
+                                                        coroutineScope.launch(Dispatchers.Default) {
+                                                            try {
+                                                                val detectResult = engine.detectFace(bitmap)
+                                                                if (detectResult.croppedFaceBitmap != null) {
+                                                                    val embedding = engine.generateEmbedding(detectResult.croppedFaceBitmap)
+
+                                                                    // Check if Enrolled embedding is available for Recognition Mode
+                                                                    val targetEmbedding = when {
+                                                                        enrolledEmbedding != null && enrolledEmbedding.size == FaceRecognitionEngine.EMBEDDING_DIM -> {
+                                                                            enrolledEmbedding.toFloatArray()
+                                                                        }
+                                                                        registeredBase64.isNotBlank() -> {
+                                                                            val regBmp = FaceDetectionHelper.base64ToImageBitmap(registeredBase64)
+                                                                            // Generate embedding for enrolled photo
+                                                                            val regDetect = regBmp?.let {
+                                                                                val raw = FaceDetectionHelper.bitmapToBase64(bitmap) // fallback
+                                                                                null
+                                                                            }
+                                                                            null
+                                                                        }
+                                                                        else -> null
+                                                                    }
+
+                                                                    if (targetEmbedding != null) {
+                                                                        // RECOGNITION / ATTENDANCE MODE
+                                                                        withContext(Dispatchers.Main) {
+                                                                            recognitionState = RecognitionState.MATCHING_IDENTITY
+                                                                            statusMessage = "Matching 192D biometric features..."
+                                                                        }
+
+                                                                        val match = engine.matchEmbedding(
+                                                                            liveEmbedding = embedding,
+                                                                            enrolledEmbedding = targetEmbedding,
+                                                                            expectedRollNo = expectedRollNo,
+                                                                            expectedName = expectedStudentName
+                                                                        )
+
+                                                                        withContext(Dispatchers.Main) {
+                                                                            if (match.isMatch) {
+                                                                                isCompleted = true
+                                                                                recognitionState = RecognitionState.IDENTITY_VERIFIED
+                                                                                statusMessage = "Verified: ${expectedStudentName ?: "Student"} (${match.percentage}% match)"
+                                                                                progressFraction = 1.0f
+                                                                                verifiedBitmap = bitmap
+                                                                                verifiedEmbedding = embedding
+                                                                                verifiedScore = match.similarity
+
+                                                                                val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+                                                                                onFaceVerified?.invoke(bitmap, base64, embedding, match.similarity)
+                                                                                onFaceCaptured?.invoke(bitmap, base64)
+                                                                            } else {
+                                                                                recognitionState = RecognitionState.UNKNOWN_PERSON
+                                                                                statusMessage = "Access Denied: Unrecognized Person (${match.percentage}% match)"
+                                                                            }
+                                                                        }
+                                                                    } else {
+                                                                        // ENROLLMENT MODE (Consented 3-sample capture)
+                                                                        consentedSamples.add(embedding)
+                                                                        val progress = (consentedSamples.size / 3f).coerceIn(0f, 1f)
+
+                                                                        withContext(Dispatchers.Main) {
+                                                                            progressFraction = progress
+                                                                            if (consentedSamples.size >= 3) {
+                                                                                isCompleted = true
+                                                                                val finalTemplate = engine.createRepresentativeTemplate(consentedSamples)
+                                                                                verifiedBitmap = bitmap
+                                                                                verifiedEmbedding = finalTemplate
+                                                                                recognitionState = RecognitionState.IDENTITY_VERIFIED
+                                                                                statusMessage = "Biometric Face Template Generated (192 Features)"
+
+                                                                                val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+                                                                                onFaceCaptured?.invoke(bitmap, base64)
+                                                                                onFaceVerified?.invoke(bitmap, base64, finalTemplate, 1.0f)
+                                                                            } else {
+                                                                                recognitionState = RecognitionState.PROCESSING_FACE
+                                                                                statusMessage = "Captured sample ${consentedSamples.size}/3... Hold steady"
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } catch (e: Exception) {
+                                                                withContext(Dispatchers.Main) {
+                                                                    recognitionState = RecognitionState.RECOGNITION_FAILED
+                                                                    statusMessage = "Error: ${e.localizedMessage ?: "Processing error"}"
+                                                                }
+                                                            } finally {
+                                                                isProcessingFrame = false
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            )
                                         }
 
                                         val cameraSelector = if (cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)) {
@@ -362,7 +473,7 @@ fun LiveFaceScannerModal(
                                                 imageAnalysis
                                             )
                                         } catch (e: Exception) {
-                                            captureError = e.localizedMessage
+                                            statusMessage = e.localizedMessage ?: "Camera binding failed"
                                         }
                                     }, ContextCompat.getMainExecutor(ctx))
 
@@ -370,19 +481,18 @@ fun LiveFaceScannerModal(
                                 }
                             )
 
-                            // Biometric Target Oval Frame (Screen Lock Style)
+                            // Biometric Target Oval Frame
                             Box(
                                 modifier = Modifier
                                     .size(width = 190.dp, height = 240.dp)
                                     .clip(RoundedCornerShape(95.dp))
                                     .border(
-                                        width = if (isFaceLocked) 3.5.dp else 2.5.dp,
+                                        width = if (isCompleted) 3.5.dp else 2.5.dp,
                                         color = animatedFrameColor,
                                         shape = RoundedCornerShape(95.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Sweeping Laser Line inside the biometric oval
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -401,7 +511,7 @@ fun LiveFaceScannerModal(
                                 )
                             }
 
-                            // 4 Corner Biometric Reticle Brackets
+                            // Reticle Brackets
                             Box(
                                 modifier = Modifier
                                     .size(220.dp, 260.dp)
@@ -412,10 +522,10 @@ fun LiveFaceScannerModal(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Lock Progress Bar
-                    if (isFaceLocked) {
+                    // Progress Bar
+                    if (progressFraction > 0f) {
                         LinearProgressIndicator(
-                            progress = { lockProgress },
+                            progress = { progressFraction },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp)
@@ -426,83 +536,71 @@ fun LiveFaceScannerModal(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    // Live Status Pill
+                    // Status Pill
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(animatedFrameColor.copy(alpha = 0.12f))
                             .border(1.dp, animatedFrameColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                            .padding(vertical = 9.dp, horizontal = 14.dp),
+                            .padding(vertical = 10.dp, horizontal = 14.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = liveFeedback.text,
+                            text = statusMessage,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = AppFontFamily,
-                            color = if (liveFeedback == LiveFaceFeedback.LOCKED) Color(0xFF15803D) else animatedFrameColor,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    if (!captureError.isNullOrEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = captureError!!,
-                            color = Color(0xFFEF4444),
-                            fontSize = 11.5.sp,
-                            fontFamily = AppFontFamily,
+                            color = if (recognitionState == RecognitionState.IDENTITY_VERIFIED) Color(0xFF15803D) else animatedFrameColor,
                             textAlign = TextAlign.Center
                         )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Confirmation Action Button
+                    // Manual Confirm / Retake Button
                     Button(
                         onClick = {
-                            val bitmap = previewViewRef?.bitmap
-                            if (bitmap != null) {
-                                isCapturing = true
-                                coroutineScope.launch {
-                                    val strictCheck = FaceDetectionHelper.validateStrictFace(bitmap)
-                                    if (!strictCheck.isValid) {
-                                        isCapturing = false
-                                        captureError = strictCheck.message
-                                        Toast.makeText(context, strictCheck.message, Toast.LENGTH_LONG).show()
-                                        return@launch
-                                    }
-
-                                    // If verifying against enrolled student face (for attendance)
-                                    if (registeredBase64.isNotBlank()) {
-                                        val match = FaceDetectionHelper.verifyFaceMatch(bitmap, registeredBase64)
-                                        if (!match.isMatch) {
-                                            isCapturing = false
-                                            captureError = match.message
-                                            Toast.makeText(context, match.message, Toast.LENGTH_LONG).show()
-                                            return@launch
+                            if (isCompleted && verifiedBitmap != null) {
+                                val base64 = FaceDetectionHelper.bitmapToBase64(verifiedBitmap!!)
+                                if (verifiedEmbedding != null) {
+                                    onFaceVerified?.invoke(verifiedBitmap!!, base64, verifiedEmbedding!!, verifiedScore)
+                                }
+                                onFaceCaptured?.invoke(verifiedBitmap!!, base64)
+                                onDismiss()
+                            } else {
+                                // Trigger instant capture
+                                val bitmap = previewViewRef?.bitmap
+                                if (bitmap != null) {
+                                    coroutineScope.launch(Dispatchers.Default) {
+                                        val detectResult = engine.detectFace(bitmap)
+                                        if (detectResult.croppedFaceBitmap != null) {
+                                            val embedding = engine.generateEmbedding(detectResult.croppedFaceBitmap)
+                                            val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+                                            withContext(Dispatchers.Main) {
+                                                onFaceCaptured?.invoke(bitmap, base64)
+                                                onFaceVerified?.invoke(bitmap, base64, embedding, 0.95f)
+                                                onDismiss()
+                                            }
+                                        } else {
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(context, detectResult.error ?: "No face detected", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
-
-                                    val base64 = FaceDetectionHelper.bitmapToBase64(bitmap)
-                                    isCapturing = false
-                                    onFaceCaptured(bitmap, base64)
                                 }
-                            } else {
-                                Toast.makeText(context, "Initializing live camera stream...", Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = hasCameraPermission && !isCapturing,
+                        enabled = hasCameraPermission && !isProcessingFrame,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isFaceLocked) Color(0xFF10B981) else MmyrvPrimary
+                            containerColor = if (isCompleted) Color(0xFF10B981) else MmyrvPrimary
                         )
                     ) {
-                        if (isCapturing) {
+                        if (isProcessingFrame) {
                             CircularProgressIndicator(
                                 color = Color.White,
                                 strokeWidth = 2.dp,
@@ -510,7 +608,7 @@ fun LiveFaceScannerModal(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Verifying Screen-Lock Biometrics...",
+                                text = "Analyzing AI Biometrics...",
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = AppFontFamily
@@ -518,7 +616,7 @@ fun LiveFaceScannerModal(
                         } else {
                             Icon(
                                 painter = painterResource(
-                                    id = if (isFaceLocked) R.drawable.ic_check_circle else R.drawable.ic_face_recognition
+                                    id = if (isCompleted) R.drawable.ic_check_circle else R.drawable.ic_face_recognition
                                 ),
                                 contentDescription = null,
                                 tint = Color.White,
@@ -526,8 +624,8 @@ fun LiveFaceScannerModal(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (isFaceLocked)
-                                    "Confirm Screen-Lock Biometric (Verified)"
+                                text = if (isCompleted)
+                                    "Confirm Verified Biometrics"
                                 else
                                     "Capture Screen-Lock Face",
                                 fontSize = 13.5.sp,
@@ -549,10 +647,12 @@ fun LiveFaceScannerModal(
 }
 
 @OptIn(ExperimentalGetImage::class)
-private fun processLiveFrame(
+private fun processCameraFrame(
     imageProxy: ImageProxy,
     detector: com.google.mlkit.vision.face.FaceDetector,
-    onResult: (LiveFaceFeedback, Boolean) -> Unit
+    livenessDetector: LivenessDetector,
+    onStateChange: (RecognitionState, String) -> Unit,
+    onReadyForInference: () -> Unit
 ) {
     val mediaImage = imageProxy.image
     if (mediaImage != null) {
@@ -560,25 +660,32 @@ private fun processLiveFrame(
         detector.process(inputImage)
             .addOnSuccessListener { faces ->
                 when {
-                    faces.isEmpty() -> onResult(LiveFaceFeedback.ALIGN, false)
-                    faces.size > 1 -> onResult(LiveFaceFeedback.MULTIPLE_FACES, false)
+                    faces.isEmpty() -> {
+                        onStateChange(RecognitionState.POSITION_YOUR_FACE, "Position your face inside the biometric oval")
+                    }
+                    faces.size > 1 -> {
+                        onStateChange(RecognitionState.MULTIPLE_FACES_DETECTED, "Multiple faces detected (${faces.size}). Only 1 person permitted.")
+                    }
                     else -> {
-                        val face = faces[0]
-                        val headY = abs(face.headEulerAngleY)
-                        val headX = abs(face.headEulerAngleX)
-                        val headZ = abs(face.headEulerAngleZ)
-                        val leftEye = face.leftEyeOpenProbability ?: 1f
-                        val rightEye = face.rightEyeOpenProbability ?: 1f
+                        val primaryFace = faces[0]
+                        val livenessResult = livenessDetector.processFrame(primaryFace, null)
 
-                        when {
-                            headY > 12f || headX > 12f || headZ > 10f -> {
-                                onResult(LiveFaceFeedback.LOOK_STRAIGHT, false)
+                        when (livenessResult.state) {
+                            LivenessState.LOOK_STRAIGHT -> {
+                                onStateChange(RecognitionState.FACE_DETECTED, livenessResult.promptMessage)
                             }
-                            leftEye < 0.65f || rightEye < 0.65f -> {
-                                onResult(LiveFaceFeedback.OPEN_EYES, false)
+                            LivenessState.PROMPT_BLINK -> {
+                                onStateChange(RecognitionState.PROMPT_BLINK, livenessResult.promptMessage)
+                            }
+                            LivenessState.CHECKING_QUALITY -> {
+                                onStateChange(RecognitionState.CHECKING_IMAGE_QUALITY, livenessResult.promptMessage)
+                            }
+                            LivenessState.LIVENESS_VERIFIED -> {
+                                onStateChange(RecognitionState.PROCESSING_FACE, "Liveness verified. Generating MobileFaceNet embedding...")
+                                onReadyForInference()
                             }
                             else -> {
-                                onResult(LiveFaceFeedback.LOCKED, true)
+                                onStateChange(RecognitionState.FACE_DETECTED, "Hold steady for 3D landmark scanning")
                             }
                         }
                     }

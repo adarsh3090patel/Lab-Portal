@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import get_database
 from app.routes.auth import router as auth_router
 from app.routes.admin import router as admin_router
+from app.routes.biometric import router as biometric_router
 
 app = FastAPI(
     title="MMYRV LabPortal API",
@@ -22,6 +23,7 @@ app.add_middleware(
 # Include Routers
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(biometric_router)
 
 @app.on_event("startup")
 def startup_db_client():

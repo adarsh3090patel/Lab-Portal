@@ -13,6 +13,7 @@ class UserRegisterRequest(BaseModel):
     profilePhotoUrl: Optional[str] = ""
     faceEnrolled: Optional[bool] = True
     facePhotoUrl: Optional[str] = ""
+    faceEmbedding: Optional[List[float]] = None
 
 class CourseCreateRequest(BaseModel):
     name: str
@@ -39,6 +40,7 @@ class ProfileUpdateRequest(BaseModel):
     guardianPhone: Optional[str] = None
     profilePhotoUrl: Optional[str] = None
     facePhotoUrl: Optional[str] = None
+    faceEmbedding: Optional[List[float]] = None
 
 class UserResponse(BaseModel):
     id: str
@@ -52,4 +54,23 @@ class UserResponse(BaseModel):
     profilePhotoUrl: Optional[str] = ""
     faceEnrolled: Optional[bool] = True
     facePhotoUrl: Optional[str] = ""
+    faceEmbedding: Optional[List[float]] = None
     profileCompletion: Optional[int] = 80
+
+class BiometricEnrollRequest(BaseModel):
+    userId: str
+    rollNo: str
+    faceEmbedding: List[float]
+    facePhotoUrl: Optional[str] = None
+
+class AttendanceVerificationRequest(BaseModel):
+    studentId: str
+    rollNo: str
+    subject: str = "Central Laboratory Practical"
+    similarityScore: float
+    livenessScore: float = 1.0
+    liveEmbedding: Optional[List[float]] = None
+
+class BiometricRevokeRequest(BaseModel):
+    userId: str
+    reason: Optional[str] = "Biometric template reset"

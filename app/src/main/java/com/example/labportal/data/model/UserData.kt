@@ -14,6 +14,7 @@ data class UserData(
     val faceEnrolled: Boolean = true,
     val profilePhotoUrl: String = "",
     val facePhotoUrl: String = "",
+    val faceEmbedding: List<Float> = emptyList(),
     val profileCompletion: Int = 80,
     val id: String = "",
     val collegeName: String = "Maharishi Mahesh Yogi Ramayan University Ayodhya",

@@ -107,6 +107,7 @@ fun MainAppNavigation() {
                                     faceEnrolled = userDto.faceEnrolled,
                                     profilePhotoUrl = userDto.profilePhotoUrl,
                                     facePhotoUrl = userDto.facePhotoUrl,
+                                    faceEmbedding = userDto.faceEmbedding ?: emptyList(),
                                     profileCompletion = userDto.profileCompletion,
                                     id = userDto.id,
                                     collegeName = userDto.collegeName,
@@ -155,7 +156,7 @@ fun MainAppNavigation() {
             RegisterScreen(
                 isLoading = isLoading,
                 errorMessage = registerError,
-                onRegisterClick = { name, email, rollNo, role, password, programme, semester, phone, faceEnrolled, facePhotoUrl ->
+                onRegisterClick = { name, email, rollNo, role, password, programme, semester, phone, faceEnrolled, facePhotoUrl, faceEmbedding ->
                     val cleanName = name.trim()
                     val cleanEmail = email.trim().lowercase()
                     val cleanRoll = rollNo.trim()
@@ -183,7 +184,8 @@ fun MainAppNavigation() {
                                     semester = semester,
                                     phone = phone,
                                     faceEnrolled = faceEnrolled,
-                                    facePhotoUrl = facePhotoUrl
+                                    facePhotoUrl = facePhotoUrl,
+                                    faceEmbedding = faceEmbedding
                                 )
                             )
 
@@ -204,6 +206,7 @@ fun MainAppNavigation() {
                                         phone = userDto.phone,
                                         faceEnrolled = userDto.faceEnrolled,
                                         facePhotoUrl = userDto.facePhotoUrl,
+                                        faceEmbedding = userDto.faceEmbedding ?: emptyList(),
                                         profileCompletion = userDto.profileCompletion
                                     )
                                     currentScreen = AppScreen.REGISTRATION_PENDING
@@ -218,6 +221,7 @@ fun MainAppNavigation() {
                                         phone = userDto.phone,
                                         faceEnrolled = userDto.faceEnrolled,
                                         facePhotoUrl = userDto.facePhotoUrl,
+                                        faceEmbedding = userDto.faceEmbedding ?: emptyList(),
                                         profileCompletion = userDto.profileCompletion
                                     )
                                     Toast.makeText(context, "Registration Successful!", Toast.LENGTH_SHORT).show()

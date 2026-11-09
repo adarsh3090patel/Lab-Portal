@@ -28,7 +28,8 @@ data class RegisterRequest(
     val phone: String = "+91 98765 43210",
     val profilePhotoUrl: String = "",
     val faceEnrolled: Boolean = true,
-    val facePhotoUrl: String = ""
+    val facePhotoUrl: String = "",
+    val faceEmbedding: List<Float>? = null
 )
 
 data class UserDto(
@@ -43,6 +44,7 @@ data class UserDto(
     val profilePhotoUrl: String = "",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = "",
+    val faceEmbedding: List<Float>? = null,
     val profileCompletion: Int = 80,
     val collegeName: String = "Maharishi Mahesh Yogi Ramayan University Ayodhya",
     val department: String = "Computer Science & Engineering",
@@ -68,7 +70,8 @@ data class ProfileUpdateRequest(
     val guardianName: String? = null,
     val guardianPhone: String? = null,
     val profilePhotoUrl: String? = null,
-    val facePhotoUrl: String? = null
+    val facePhotoUrl: String? = null,
+    val faceEmbedding: List<Float>? = null
 )
 
 data class AuthResponse(
@@ -92,9 +95,59 @@ data class StudentApprovalDto(
     val profilePhotoUrl: String = "",
     val faceEnrolled: Boolean = true,
     val facePhotoUrl: String = "",
+    val faceEmbedding: List<Float>? = null,
     @SerializedName("isApproved") val isApproved: Boolean = false,
     val status: String = "pending",
     val createdAt: String? = null
+)
+
+data class BiometricEnrollDto(
+    val userId: String,
+    val rollNo: String,
+    val faceEmbedding: List<Float>,
+    val facePhotoUrl: String? = null
+)
+
+data class AttendanceVerifyDto(
+    val studentId: String,
+    val rollNo: String,
+    val subject: String = "Central Laboratory Practical",
+    val similarityScore: Float,
+    val livenessScore: Float = 1.0f,
+    val liveEmbedding: List<Float>? = null
+)
+
+data class AttendanceRecordDto(
+    val id: String = "",
+    val studentId: String = "",
+    val rollNo: String = "",
+    val studentName: String = "",
+    val subject: String = "",
+    val date: String = "",
+    val timestamp: String = "",
+    val status: String = "Present",
+    val similarityScore: Float = 0.0f
+)
+
+data class AttendanceVerifyResponse(
+    val success: Boolean,
+    val message: String,
+    val attendance: AttendanceRecordDto? = null
+)
+
+data class AttendanceHistoryResponse(
+    val success: Boolean,
+    val count: Int,
+    val records: List<AttendanceRecordDto> = emptyList()
+)
+
+data class BiometricTemplateResponse(
+    val success: Boolean,
+    val userId: String,
+    val rollNo: String,
+    val fullName: String,
+    val faceEnrolled: Boolean,
+    val faceEmbedding: List<Float> = emptyList()
 )
 
 data class SimpleActionResponse(
@@ -147,6 +200,7 @@ interface AuthApiService {
     @retrofit2.http.DELETE("api/admin/delete-student/{id}")
     suspend fun deleteStudentPermanently(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
 
+
     @GET("api/courses")
     suspend fun getCourses(): Response<List<CourseDto>>
 
@@ -161,6 +215,21 @@ interface AuthApiService {
 
     @retrofit2.http.DELETE("api/admin/courses/{id}")
     suspend fun deleteCourse(@retrofit2.http.Path("id") id: String): Response<SimpleActionResponse>
+
+    @POST("api/biometric/enroll")
+    suspend fun enrollBiometricTemplate(@Body body: BiometricEnrollDto): Response<SimpleActionResponse>
+
+    @GET("api/biometric/template/{userId}")
+    suspend fun getBiometricTemplate(@retrofit2.http.Path("userId") userId: String): Response<BiometricTemplateResponse>
+
+    @POST("api/biometric/verify-attendance")
+    suspend fun verifyAndRecordAttendance(@Body body: AttendanceVerifyDto): Response<AttendanceVerifyResponse>
+
+    @GET("api/biometric/attendance/student/{studentId}")
+    suspend fun getStudentAttendanceHistory(@retrofit2.http.Path("studentId") studentId: String): Response<AttendanceHistoryResponse>
+
+    @POST("api/biometric/revoke/{userId}")
+    suspend fun revokeBiometricEnrollment(@retrofit2.http.Path("userId") userId: String): Response<SimpleActionResponse>
 
     @GET("health")
     suspend fun healthCheck(): Response<HealthResponse>

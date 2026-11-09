@@ -116,8 +116,9 @@ fun RegisterScreen(
         semester: String,
         phone: String,
         faceEnrolled: Boolean,
-        facePhotoUrl: String
-    ) -> Unit = { _, _, _, _, _, _, _, _, _, _ -> },
+        facePhotoUrl: String,
+        faceEmbedding: List<Float>?
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _ -> },
     onNavigateToLogin: () -> Unit = {},
     isLoading: Boolean = false,
     errorMessage: String? = null
@@ -145,6 +146,7 @@ fun RegisterScreen(
     // Real Facial Recognition Biometric State
     var faceEnrolled by remember { mutableStateOf(false) }
     var facePhotoBase64 by remember { mutableStateOf("") }
+    var faceEmbedding by remember { mutableStateOf<List<Float>?>(null) }
     var capturedFaceBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var faceDetectionMsg by remember { mutableStateOf<String?>(null) }
     var showFaceScanModal by remember { mutableStateOf(false) }
@@ -869,7 +871,8 @@ fun RegisterScreen(
                                 semester,
                                 phone.ifBlank { "+91 98765 43210" },
                                 faceEnrolled,
-                                facePhotoBase64
+                                facePhotoBase64,
+                                faceEmbedding
                             )
                         },
                         modifier = Modifier
@@ -942,15 +945,22 @@ fun RegisterScreen(
     if (showFaceScanModal) {
         LiveFaceScannerModal(
             title = "Live Biometric Enrollment",
-            subtitle = "Front camera real-time AI face capture",
+            subtitle = "AI MobileFaceNet 3D Landmark & Liveness Check",
+            onFaceVerified = { bitmap, base64, embedding, _ ->
+                capturedFaceBitmap = bitmap
+                facePhotoBase64 = base64
+                faceEmbedding = embedding.toList()
+                faceEnrolled = true
+                faceDetectionMsg = "Real 192D Face Biometrics Enrolled"
+                showFaceScanModal = false
+                localValidationMsg = null
+                Toast.makeText(context, "Face Biometrics Enrolled Successfully!", Toast.LENGTH_SHORT).show()
+            },
             onFaceCaptured = { bitmap, base64 ->
                 capturedFaceBitmap = bitmap
                 facePhotoBase64 = base64
                 faceEnrolled = true
-                faceDetectionMsg = "Real Face Verified & Biometrics Locked"
                 showFaceScanModal = false
-                localValidationMsg = null
-                Toast.makeText(context, "Face Enrolled Successfully!", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showFaceScanModal = false }
         )

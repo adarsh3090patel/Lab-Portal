@@ -143,6 +143,7 @@ def get_all_students_for_approval():
             "profilePhotoUrl": s.get("profilePhotoUrl", s.get("facePhotoUrl", "")),
             "faceEnrolled": s.get("faceEnrolled", True),
             "facePhotoUrl": s.get("facePhotoUrl", ""),
+            "faceEmbedding": s.get("faceEmbedding", []),
             "isApproved": s.get("isApproved", False),
             "status": s.get("status", "pending" if not s.get("isApproved") else "approved"),
             "createdAt": s.get("createdAt", "Recent")
@@ -174,6 +175,7 @@ def get_all_approved_students():
             "profilePhotoUrl": s.get("profilePhotoUrl", s.get("facePhotoUrl", "")),
             "faceEnrolled": s.get("faceEnrolled", True),
             "facePhotoUrl": s.get("facePhotoUrl", ""),
+            "faceEmbedding": s.get("faceEmbedding", []),
             "isApproved": True,
             "status": "approved",
             "createdAt": s.get("createdAt", "Recent")
@@ -205,6 +207,7 @@ def get_rejected_students():
             "profilePhotoUrl": s.get("profilePhotoUrl", s.get("facePhotoUrl", "")),
             "faceEnrolled": s.get("faceEnrolled", True),
             "facePhotoUrl": s.get("facePhotoUrl", ""),
+            "faceEmbedding": s.get("faceEmbedding", []),
             "isApproved": False,
             "status": "rejected",
             "createdAt": s.get("createdAt", "Recent")
