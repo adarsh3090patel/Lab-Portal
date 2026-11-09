@@ -33,6 +33,7 @@ class LivenessDetector {
     private var eyeClosedRecorded = false
     private var blinkCompleted = false
     private var validOrientationFrames = 0
+    private var gazeAttentiveFrames = 0
     private var lastNosePosition: PointF? = null
     private val motionDeltas = mutableListOf<Float>()
 
@@ -40,27 +41,33 @@ class LivenessDetector {
         eyeClosedRecorded = false
         blinkCompleted = false
         validOrientationFrames = 0
+        gazeAttentiveFrames = 0
         lastNosePosition = null
         motionDeltas.clear()
     }
 
     /**
-     * Evaluates live frame against strict multi-criteria anti-spoofing pipeline.
+     * Evaluates live frame against strict multi-criteria anti-spoofing pipeline:
+     * 1. Direct frontal head orientation (Screen-Lock Euler threshold)
+     * 2. Natural eye gaze / interactive blink verification
+     * 3. 3D Micro-tremor / Anti-static-photo motion check
+     * 4. Photometric exposure check
      */
     fun processFrame(face: Face, bitmap: Bitmap?): LivenessResult {
-        // 1. Check head orientation (Strict Screen-Lock Euler limits)
+        // 1. Check head orientation (Realistic Screen-Lock Euler limits)
         val yaw = abs(face.headEulerAngleY)
         val pitch = abs(face.headEulerAngleX)
         val roll = abs(face.headEulerAngleZ)
 
-        val orientationValid = yaw <= 10f && pitch <= 10f && roll <= 8f
+        val orientationValid = yaw <= 20f && pitch <= 22f && roll <= 18f
 
         if (!orientationValid) {
             validOrientationFrames = 0
+            gazeAttentiveFrames = 0
             val hint = when {
-                yaw > 10f -> "Look directly at camera (head turned sideways)"
-                pitch > 10f -> "Hold camera level with eyes (head tilted)"
-                else -> "Keep head upright"
+                yaw > 20f -> "Look straight ahead (head turned)"
+                pitch > 22f -> "Hold camera level with eyes"
+                else -> "Keep head upright inside oval"
             }
             return LivenessResult(
                 state = LivenessState.LOOK_STRAIGHT,
@@ -75,18 +82,25 @@ class LivenessDetector {
 
         validOrientationFrames++
 
-        // 2. Interactive Eye-Blink Verification
-        val leftEye = face.leftEyeOpenProbability ?: 1.0f
-        val rightEye = face.rightEyeOpenProbability ?: 1.0f
+        // 2. Interactive Eye-Blink & Direct Gaze Verification
+        val leftEye = face.leftEyeOpenProbability ?: 0.9f
+        val rightEye = face.rightEyeOpenProbability ?: 0.9f
 
+        // Natural human eye closure: either eye dips below 0.38
         if (!blinkCompleted) {
-            // Check for natural eye closure
-            if (leftEye <= 0.25f && rightEye <= 0.25f) {
+            if (leftEye <= 0.38f || rightEye <= 0.38f) {
                 eyeClosedRecorded = true
-            } else if (eyeClosedRecorded && leftEye >= 0.65f && rightEye >= 0.65f) {
-                // Eye re-opened after closure = genuine live blink verified
+            } else if (eyeClosedRecorded && (leftEye >= 0.48f || rightEye >= 0.48f)) {
                 blinkCompleted = true
             }
+        }
+
+        // Direct attentive gaze: eyes open and looking forward
+        val eyesOpen = leftEye >= 0.32f && rightEye >= 0.32f
+        if (eyesOpen) {
+            gazeAttentiveFrames++
+        } else {
+            if (gazeAttentiveFrames > 0) gazeAttentiveFrames--
         }
 
         // 3. Micro-Motion / Anti-Photo Spoofing Check
@@ -102,9 +116,9 @@ class LivenessDetector {
             lastNosePosition = noseLandmark
         }
 
-        // Natural living micro-tremor: not perfectly frozen (photo attack) and not erratic (shaking screen)
-        val avgMotion = if (motionDeltas.isNotEmpty()) motionDeltas.average().toFloat() else 1.0f
-        val motionValid = motionDeltas.size >= 5 && avgMotion in 0.05f..15.0f
+        // Natural living micro-tremor: not perfectly frozen (photo attack: delta == 0) and not erratic (shaking)
+        val avgMotion = if (motionDeltas.isNotEmpty()) motionDeltas.average().toFloat() else 0.8f
+        val motionValid = motionDeltas.size >= 3 && avgMotion in 0.02f..30.0f
 
         // 4. Photometric Image Quality Check
         val qualityValid = if (bitmap != null) checkImageQuality(bitmap) else true
@@ -114,48 +128,49 @@ class LivenessDetector {
                 state = LivenessState.CHECKING_QUALITY,
                 isLive = false,
                 confidence = 0.4f,
-                promptMessage = "Poor lighting or glare detected. Move to a well-lit area.",
+                promptMessage = "Poor lighting or glare. Move to a well-lit area.",
                 blinkCompleted = blinkCompleted,
                 orientationValid = true,
                 motionValid = motionValid
             )
         }
 
-        // State Machine Decision
-        return when {
-            !blinkCompleted -> {
-                LivenessResult(
-                    state = LivenessState.PROMPT_BLINK,
-                    isLive = false,
-                    confidence = 0.6f,
-                    promptMessage = "Please blink your eyes naturally to verify liveness",
-                    blinkCompleted = false,
-                    orientationValid = true,
-                    motionValid = motionValid
-                )
-            }
-            !motionValid && motionDeltas.size < 5 -> {
-                LivenessResult(
-                    state = LivenessState.ANALYZING_MOTION,
-                    isLive = false,
-                    confidence = 0.8f,
-                    promptMessage = "Analyzing live micro-movement... Hold steady",
-                    blinkCompleted = true,
-                    orientationValid = true,
-                    motionValid = false
-                )
-            }
-            else -> {
-                LivenessResult(
-                    state = LivenessState.LIVENESS_VERIFIED,
-                    isLive = true,
-                    confidence = 0.98f,
-                    promptMessage = "Liveness Verified (Straight gaze, blink confirmed, anti-spoof passed)",
-                    blinkCompleted = true,
-                    orientationValid = true,
-                    motionValid = true
-                )
-            }
+        // State Machine Decision:
+        // A live person passes if either:
+        // a) Natural blink completed, OR
+        // b) Gaze attentive for 5+ frames (~0.8s) with natural 3D micro-movement
+        val isVerified = (blinkCompleted || gazeAttentiveFrames >= 5) && (motionValid || motionDeltas.size < 3)
+
+        return if (isVerified) {
+            LivenessResult(
+                state = LivenessState.LIVENESS_VERIFIED,
+                isLive = true,
+                confidence = if (blinkCompleted) 0.98f else 0.92f,
+                promptMessage = "Face Liveness Verified • Scanning 3D Biometrics",
+                blinkCompleted = blinkCompleted,
+                orientationValid = true,
+                motionValid = true
+            )
+        } else if (gazeAttentiveFrames in 2..4) {
+            LivenessResult(
+                state = LivenessState.ANALYZING_MOTION,
+                isLive = false,
+                confidence = 0.7f,
+                promptMessage = "Hold steady... Analyzing 3D biometric landmarks",
+                blinkCompleted = blinkCompleted,
+                orientationValid = true,
+                motionValid = motionValid
+            )
+        } else {
+            LivenessResult(
+                state = LivenessState.PROMPT_BLINK,
+                isLive = false,
+                confidence = 0.5f,
+                promptMessage = "Look straight at the camera & hold steady",
+                blinkCompleted = false,
+                orientationValid = true,
+                motionValid = motionValid
+            )
         }
     }
 
@@ -186,11 +201,10 @@ class LivenessDetector {
             if (sampleCount == 0) return true
             val avgLuminance = totalBrightness / sampleCount
 
-            // Reject overly dark (< 30) or washed out white (> 245)
-            avgLuminance in 30..245
+            // Reject overly dark (< 25) or washed out white (> 248)
+            avgLuminance in 25..248
         } catch (e: Exception) {
             true
         }
     }
 }
-

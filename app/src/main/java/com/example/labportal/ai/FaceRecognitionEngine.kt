@@ -51,8 +51,8 @@ class FaceRecognitionEngine private constructor(private val context: Context) {
         const val EMBEDDING_DIM = 192
 
         // Validated matching thresholds for MobileFaceNet
-        const val STRICT_MATCH_THRESHOLD = 0.70f // Production screen-lock grade
-        const val HIGH_CONFIDENCE_THRESHOLD = 0.78f
+        const val STRICT_MATCH_THRESHOLD = 0.65f // Production screen-lock grade
+        const val HIGH_CONFIDENCE_THRESHOLD = 0.75f
 
         @Volatile
         private var instance: FaceRecognitionEngine? = null

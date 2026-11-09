@@ -427,7 +427,7 @@ object FaceDetectionHelper {
         return bmp.asImageBitmap()
     }
 
-    private fun base64ToBitmap(base64Str: String): Bitmap? {
+    fun base64ToBitmap(base64Str: String): Bitmap? {
         if (base64Str.isBlank()) return null
         return try {
             val bytes = Base64.decode(base64Str, Base64.DEFAULT)

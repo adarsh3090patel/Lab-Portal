@@ -219,21 +219,31 @@ def get_rejected_students():
         })
     return result
 
+def find_user_by_identifier(identifier: str, users_col):
+    if not identifier:
+        return None
+    user = None
+    try:
+        user = users_col.find_one({"_id": ObjectId(identifier)})
+    except Exception:
+        pass
+    if not user:
+        user = users_col.find_one({"rollNo": identifier})
+    if not user:
+        user = users_col.find_one({"email": identifier.lower()})
+    return user
+
 @router.post("/api/admin/approve-student/{user_id}")
 def approve_student(user_id: str):
     db = get_database()
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
-
-    res = users_col.update_one({"_id": obj_id}, {"$set": {"isApproved": True, "status": "approved"}})
-    if res.matched_count == 0:
+    student = find_user_by_identifier(user_id, users_col)
+    if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
-    
+
+    users_col.update_one({"_id": student["_id"]}, {"$set": {"isApproved": True, "status": "approved"}})
     return {"message": "Student approved successfully", "success": True}
 
 @router.post("/api/admin/reject-student/{user_id}")
@@ -242,15 +252,11 @@ def reject_student(user_id: str):
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
-
-    res = users_col.update_one({"_id": obj_id}, {"$set": {"isApproved": False, "status": "rejected"}})
-    if res.matched_count == 0:
+    student = find_user_by_identifier(user_id, users_col)
+    if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
-    
+
+    users_col.update_one({"_id": student["_id"]}, {"$set": {"isApproved": False, "status": "rejected"}})
     return {"message": "Student registration marked as rejected", "success": True}
 
 @router.delete("/api/admin/delete-student/{user_id}")
@@ -259,12 +265,11 @@ def delete_student_permanently(user_id: str):
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+    student = find_user_by_identifier(user_id, users_col)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
 
-    res = users_col.delete_one({"_id": obj_id})
+    users_col.delete_one({"_id": student["_id"]})
     return {"message": "Student record permanently deleted", "success": True}
 
 @router.post("/api/admin/student/{user_id}/block")
@@ -274,26 +279,22 @@ def block_student(user_id: str):
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
-
-    res = users_col.update_one({"_id": obj_id}, {"$set": {"isBlocked": True, "status": "blocked"}})
-    if res.matched_count == 0:
+    student = find_user_by_identifier(user_id, users_col)
+    if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+
+    obj_id = student["_id"]
+    users_col.update_one({"_id": obj_id}, {"$set": {"isBlocked": True, "status": "blocked"}})
     
     # Log blocking in edit history
-    student = users_col.find_one({"_id": obj_id})
-    if student:
-        db["edit_history"].insert_one({
-            "studentId": str(obj_id),
-            "studentName": student.get("fullName", ""),
-            "rollNo": student.get("rollNo", ""),
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "changes": [{"field": "Account Status", "oldValue": "Active / Approved", "newValue": "Blocked by Administrator"}],
-            "type": "Admin Action"
-        })
+    db["edit_history"].insert_one({
+        "studentId": str(obj_id),
+        "studentName": student.get("fullName", ""),
+        "rollNo": student.get("rollNo", ""),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "changes": [{"field": "Account Status", "oldValue": "Active / Approved", "newValue": "Blocked by Administrator"}],
+        "type": "Admin Action"
+    })
 
     return {"message": "Student account has been blocked successfully.", "success": True, "isBlocked": True}
 
@@ -304,26 +305,22 @@ def unblock_student(user_id: str):
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
-
-    res = users_col.update_one({"_id": obj_id}, {"$set": {"isBlocked": False, "status": "approved"}})
-    if res.matched_count == 0:
+    student = find_user_by_identifier(user_id, users_col)
+    if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+
+    obj_id = student["_id"]
+    users_col.update_one({"_id": obj_id}, {"$set": {"isBlocked": False, "status": "approved"}})
     
     # Log unblocking in edit history
-    student = users_col.find_one({"_id": obj_id})
-    if student:
-        db["edit_history"].insert_one({
-            "studentId": str(obj_id),
-            "studentName": student.get("fullName", ""),
-            "rollNo": student.get("rollNo", ""),
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "changes": [{"field": "Account Status", "oldValue": "Blocked", "newValue": "Restored / Unblocked"}],
-            "type": "Admin Action"
-        })
+    db["edit_history"].insert_one({
+        "studentId": str(obj_id),
+        "studentName": student.get("fullName", ""),
+        "rollNo": student.get("rollNo", ""),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "changes": [{"field": "Account Status", "oldValue": "Blocked", "newValue": "Restored / Unblocked"}],
+        "type": "Admin Action"
+    })
 
     return {"message": "Student account has been unblocked successfully.", "success": True, "isBlocked": False}
 
@@ -333,40 +330,36 @@ def grant_update_permissions(user_id: str, req: GrantPermissionsRequest):
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+    student = find_user_by_identifier(user_id, users_col)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
 
+    obj_id = student["_id"]
     allowed = {
         "face": req.face,
         "academic": req.academic,
         "personal": req.personal
     }
 
-    res = users_col.update_one({"_id": obj_id}, {"$set": {"allowedEdits": allowed}})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+    users_col.update_one({"_id": obj_id}, {"$set": {"allowedEdits": allowed}})
     
-    student = users_col.find_one({"_id": obj_id})
     granted_names = []
     if req.face: granted_names.append("Facial Recognition")
     if req.academic: granted_names.append("Academic Information")
     if req.personal: granted_names.append("Contact & Personal Details")
     
-    if student:
-        db["edit_history"].insert_one({
-            "studentId": str(obj_id),
-            "studentName": student.get("fullName", ""),
-            "rollNo": student.get("rollNo", ""),
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "changes": [{
-                "field": "Admin Permissions Granted",
-                "oldValue": "Locked",
-                "newValue": f"1-time edit granted for: {', '.join(granted_names) if granted_names else 'None'}"
-            }],
-            "type": "Permission Grant"
-        })
+    db["edit_history"].insert_one({
+        "studentId": str(obj_id),
+        "studentName": student.get("fullName", ""),
+        "rollNo": student.get("rollNo", ""),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "changes": [{
+            "field": "Admin Permissions Granted",
+            "oldValue": "Locked",
+            "newValue": f"1-time edit granted for: {', '.join(granted_names) if granted_names else 'None'}"
+        }],
+        "type": "Permission Grant"
+    })
 
     return {
         "message": f"Permissions updated! Student can update: {', '.join(granted_names) if granted_names else 'None'} once.",
@@ -380,9 +373,22 @@ def get_student_edit_history(user_id: str):
     if db is None:
         return []
     history_col = db["edit_history"]
+    users_col = db["users"]
     
-    # Query by string id or object id
-    records = list(history_col.find({"studentId": user_id}).sort("timestamp", -1))
+    student = find_user_by_identifier(user_id, users_col)
+    s_id_str = str(student["_id"]) if student else user_id
+    s_roll = student.get("rollNo", "") if student else user_id
+    
+    # Query by string id, object id, or rollNo
+    records = list(history_col.find({
+        "$or": [
+            {"studentId": s_id_str},
+            {"studentId": user_id},
+            {"rollNo": s_roll},
+            {"rollNo": user_id}
+        ]
+    }).sort("timestamp", -1))
+
     result = []
     for r in records:
         result.append({

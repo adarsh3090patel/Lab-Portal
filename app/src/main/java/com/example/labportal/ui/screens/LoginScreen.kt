@@ -198,7 +198,14 @@ fun LoginScreen(
                     showServerDialog = true
                 },
                 modifier = Modifier
-                    .background(color = Color(0xFFF1F5F9), shape = CircleShape)
+                    .background(color = Color(0xFFF1F5F9), shape =
+
+
+
+
+
+
+                        CircleShape)
                     .size(40.dp)
             ) {
                 Icon(

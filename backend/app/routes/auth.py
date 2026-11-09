@@ -142,19 +142,31 @@ def login(credentials: UserLoginRequest):
     }
 
 @router.put("/profile/{user_id}")
+def find_user_by_identifier(identifier: str, users_col):
+    if not identifier:
+        return None
+    user = None
+    try:
+        user = users_col.find_one({"_id": ObjectId(identifier)})
+    except Exception:
+        pass
+    if not user:
+        user = users_col.find_one({"rollNo": identifier})
+    if not user:
+        user = users_col.find_one({"email": identifier.lower()})
+    return user
+
+@router.put("/profile/{user_id}")
 def update_profile(user_id: str, req: ProfileUpdateRequest):
     db = get_database()
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
-
-    old_user = users_col.find_one({"_id": obj_id})
+    
+    old_user = find_user_by_identifier(user_id, users_col)
     if not old_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    obj_id = old_user["_id"]
 
     diffs = []
     def check_diff(field_label, old_val, new_val):
@@ -168,53 +180,72 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
             })
 
     update_fields = {}
+    personal_changed = False
+    academic_changed = False
+    face_changed = False
+
     if req.fullName is not None:
         check_diff("Full Name", old_user.get("fullName"), req.fullName)
         update_fields["fullName"] = req.fullName
+        personal_changed = True
     if req.phone is not None:
         check_diff("Phone", old_user.get("phone"), req.phone)
         update_fields["phone"] = req.phone
+        personal_changed = True
     if req.department is not None:
         check_diff("Department", old_user.get("department"), req.department)
         update_fields["department"] = req.department
+        academic_changed = True
     if req.programme is not None:
         check_diff("Programme", old_user.get("programme"), req.programme)
         update_fields["programme"] = req.programme
+        academic_changed = True
     if req.semester is not None:
         check_diff("Semester", old_user.get("semester"), req.semester)
         update_fields["semester"] = req.semester
+        academic_changed = True
     if req.academicYear is not None:
         check_diff("Academic Year", old_user.get("academicYear"), req.academicYear)
         update_fields["academicYear"] = req.academicYear
+        academic_changed = True
     if req.collegeName is not None:
         check_diff("College Name", old_user.get("collegeName"), req.collegeName)
         update_fields["collegeName"] = req.collegeName
+        academic_changed = True
     if req.dob is not None:
         check_diff("Date of Birth", old_user.get("dob"), req.dob)
         update_fields["dob"] = req.dob
+        personal_changed = True
     if req.bloodGroup is not None:
         check_diff("Blood Group", old_user.get("bloodGroup"), req.bloodGroup)
         update_fields["bloodGroup"] = req.bloodGroup
+        personal_changed = True
     if req.permanentAddress is not None:
         check_diff("Permanent Address", old_user.get("permanentAddress"), req.permanentAddress)
         update_fields["permanentAddress"] = req.permanentAddress
+        personal_changed = True
     if req.guardianName is not None:
         check_diff("Guardian Name", old_user.get("guardianName"), req.guardianName)
         update_fields["guardianName"] = req.guardianName
+        personal_changed = True
     if req.guardianPhone is not None:
         check_diff("Guardian Phone", old_user.get("guardianPhone"), req.guardianPhone)
         update_fields["guardianPhone"] = req.guardianPhone
+        personal_changed = True
     if req.profilePhotoUrl is not None and req.profilePhotoUrl.strip():
         diffs.append({"field": "Profile Avatar", "oldValue": "Previous Avatar", "newValue": "Updated Profile Photo"})
         update_fields["profilePhotoUrl"] = req.profilePhotoUrl
+        personal_changed = True
     if req.facePhotoUrl is not None and req.facePhotoUrl.strip():
         diffs.append({"field": "Facial Biometric Photo", "oldValue": "Previous Biometric Scan", "newValue": "Updated Biometric Face"})
         update_fields["facePhotoUrl"] = req.facePhotoUrl
         update_fields["faceEnrolled"] = True
+        face_changed = True
     if req.faceEmbedding is not None and len(req.faceEmbedding) >= 128:
         diffs.append({"field": "Biometric 192D Embedding", "oldValue": "Initial Enrolled Template", "newValue": "New 192D Mathematical Template"})
         update_fields["faceEmbedding"] = req.faceEmbedding
         update_fields["faceEnrolled"] = True
+        face_changed = True
 
     # Check completeness
     is_complete = bool(
@@ -224,17 +255,26 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
     )
     update_fields["profileCompletion"] = 100 if is_complete else 85
     
-    # Mark 1st edit done and consume any granted permissions so profile re-locks
+    # 1-time section permission consumption
     is_initial = not old_user.get("initialEditDone", False)
+    allowed_edits = dict(old_user.get("allowedEdits", {"face": False, "academic": False, "personal": False}))
+    
+    if personal_changed:
+        allowed_edits["personal"] = False
+    if academic_changed:
+        allowed_edits["academic"] = False
+    if face_changed:
+        allowed_edits["face"] = False
+
     update_fields["initialEditDone"] = True
-    update_fields["allowedEdits"] = {"face": False, "academic": False, "personal": False}
+    update_fields["allowedEdits"] = allowed_edits
 
     users_col.update_one({"_id": obj_id}, {"$set": update_fields})
     updated_user = users_col.find_one({"_id": obj_id})
     if not updated_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    # Record in Edit History audit log
+    # Record in Edit History audit log with exact details
     if diffs:
         db["edit_history"].insert_one({
             "studentId": str(obj_id),
@@ -242,13 +282,13 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
             "rollNo": updated_user.get("rollNo", ""),
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "changes": diffs,
-            "type": "Initial 1-Time Setup" if is_initial else "Admin-Authorized Update"
+            "type": "Initial Profile Setup" if is_initial else "Admin-Authorized 1-Time Update"
         })
 
     is_blocked = updated_user.get("isBlocked", False) or updated_user.get("status") == "blocked"
 
     return {
-        "message": "Profile updated successfully. Changes locked under admin policy.",
+        "message": "Profile updated successfully. Changes locked under university policy.",
         "user": {
             "id": str(updated_user["_id"]),
             "fullName": updated_user.get("fullName", ""),
@@ -273,7 +313,7 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
             "profileCompletion": updated_user.get("profileCompletion", 85),
             "isBlocked": is_blocked,
             "status": "blocked" if is_blocked else updated_user.get("status", "approved"),
-            "allowedEdits": updated_user.get("allowedEdits", {"face": False, "academic": False, "personal": False}),
+            "allowedEdits": allowed_edits,
             "initialEditDone": True
         }
     }
@@ -284,12 +324,7 @@ def get_user_status(user_id: str):
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection not ready.")
     users_col = db["users"]
-    try:
-        obj_id = ObjectId(user_id)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
-
-    user = users_col.find_one({"_id": obj_id})
+    user = find_user_by_identifier(user_id, users_col)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 

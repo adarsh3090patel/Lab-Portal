@@ -95,6 +95,11 @@ fun StudentProfileScreen(
     var showLockedProfileAlert by remember { mutableStateOf(false) }
     var showLockedFaceAlert by remember { mutableStateOf(false) }
 
+    // Live Sync with MongoDB Atlas permissions & status
+    var currentAllowedEdits by remember { mutableStateOf(user.allowedEdits) }
+    var currentInitialEditDone by remember { mutableStateOf(user.initialEditDone) }
+    var isRefreshingStatus by remember { mutableStateOf(false) }
+
     // Separate State: 1. Display Profile Avatar & 2. Official Biometric Face Template
     var currentProfilePhoto by remember {
         mutableStateOf(user.profilePhotoUrl.ifBlank { user.facePhotoUrl })
@@ -103,6 +108,13 @@ fun StudentProfileScreen(
         mutableStateOf(user.facePhotoUrl)
     }
 
+    // Editable Academic Fields
+    var collegeInput by remember { mutableStateOf(user.collegeName) }
+    var programmeInput by remember { mutableStateOf(user.programme) }
+    var semesterInput by remember { mutableStateOf(user.semester) }
+    var departmentInput by remember { mutableStateOf(user.department) }
+
+    // Editable Personal & Contact Fields
     var fullNameInput by remember { mutableStateOf(user.fullName) }
     var phoneInput by remember { mutableStateOf(user.phone) }
     var dobInput by remember { mutableStateOf(user.dob) }
@@ -110,6 +122,31 @@ fun StudentProfileScreen(
     var addressInput by remember { mutableStateOf(user.permanentAddress) }
     var guardianNameInput by remember { mutableStateOf(user.guardianName) }
     var guardianPhoneInput by remember { mutableStateOf(user.guardianPhone) }
+
+    // Permissions check
+    val isFirstTimeSetup = !currentInitialEditDone
+    val canEditAcademic = isFirstTimeSetup || currentAllowedEdits.academic
+    val canEditPersonal = isFirstTimeSetup || currentAllowedEdits.personal
+    val canEditFace = isFirstTimeSetup || currentAllowedEdits.face
+    val canEditAnyProfile = canEditAcademic || canEditPersonal
+
+    // Fetch latest user status and admin-granted permissions from MongoDB Atlas
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        isRefreshingStatus = true
+        try {
+            val uid = if (user.id.isNotBlank()) user.id else user.rollNo
+            val res = NetworkClient.apiService.getUserStatus(uid)
+            if (res.isSuccessful && res.body() != null) {
+                val b = res.body()!!
+                currentAllowedEdits = b.allowedEdits
+                currentInitialEditDone = b.initialEditDone
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            isRefreshingStatus = false
+        }
+    }
 
     // Bitmaps for rendering
     val profileImageBitmap = remember(currentProfilePhoto) {
@@ -134,13 +171,17 @@ fun StudentProfileScreen(
         coroutineScope.launch {
             try {
                 val req = ProfileUpdateRequest(
-                    fullName = fullNameInput.trim().ifBlank { user.fullName },
-                    phone = phoneInput.trim(),
-                    dob = dobInput.trim(),
-                    bloodGroup = bloodGroupInput.trim(),
-                    permanentAddress = addressInput.trim(),
-                    guardianName = guardianNameInput.trim(),
-                    guardianPhone = guardianPhoneInput.trim(),
+                    fullName = if (canEditPersonal) fullNameInput.trim().ifBlank { user.fullName } else null,
+                    phone = if (canEditPersonal) phoneInput.trim() else null,
+                    dob = if (canEditPersonal) dobInput.trim() else null,
+                    bloodGroup = if (canEditPersonal) bloodGroupInput.trim() else null,
+                    permanentAddress = if (canEditPersonal) addressInput.trim() else null,
+                    guardianName = if (canEditPersonal) guardianNameInput.trim() else null,
+                    guardianPhone = if (canEditPersonal) guardianPhoneInput.trim() else null,
+                    collegeName = if (canEditAcademic) collegeInput.trim() else null,
+                    programme = if (canEditAcademic) programmeInput.trim() else null,
+                    semester = if (canEditAcademic) semesterInput.trim() else null,
+                    department = if (canEditAcademic) departmentInput.trim() else null,
                     profilePhotoUrl = if (targetProfile.isNotBlank()) targetProfile else null,
                     facePhotoUrl = if (targetBiometric.isNotBlank()) targetBiometric else null,
                     faceEmbedding = newEmbedding
@@ -151,6 +192,8 @@ fun StudentProfileScreen(
 
                 if (response.isSuccessful && response.body() != null) {
                     val updatedDto = response.body()!!.user
+                    currentAllowedEdits = updatedDto.allowedEdits
+                    currentInitialEditDone = true
                     val updatedUser = user.copy(
                         fullName = updatedDto.fullName,
                         phone = updatedDto.phone,
@@ -159,24 +202,31 @@ fun StudentProfileScreen(
                         permanentAddress = updatedDto.permanentAddress,
                         guardianName = updatedDto.guardianName,
                         guardianPhone = updatedDto.guardianPhone,
+                        collegeName = updatedDto.collegeName,
+                        programme = updatedDto.programme,
+                        semester = updatedDto.semester,
+                        department = updatedDto.department,
                         profilePhotoUrl = updatedDto.profilePhotoUrl,
                         facePhotoUrl = updatedDto.facePhotoUrl,
                         faceEmbedding = updatedDto.faceEmbedding ?: (newEmbedding ?: user.faceEmbedding),
-                        profileCompletion = updatedDto.profileCompletion
+                        profileCompletion = updatedDto.profileCompletion,
+                        allowedEdits = updatedDto.allowedEdits,
+                        initialEditDone = true
                     )
                     currentProfilePhoto = updatedDto.profilePhotoUrl
                     currentBiometricPhoto = updatedDto.facePhotoUrl
                     fullNameInput = updatedDto.fullName
+                    collegeInput = updatedDto.collegeName
+                    programmeInput = updatedDto.programme
+                    semesterInput = updatedDto.semester
+                    departmentInput = updatedDto.department
                     onProfileUpdated(updatedUser)
                     isEditMode = false
                     showEditProfileDialog = false
                     onSuccess?.invoke()
                     Toast.makeText(
                         context,
-                        if (updatedDto.profileCompletion >= 100)
-                            "Profile 100% complete! Database updated successfully."
-                        else
-                            "Profile saved to database successfully.",
+                        "Profile saved to MongoDB database successfully.",
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
@@ -297,14 +347,22 @@ fun StudentProfileScreen(
                     )
                 }
 
-                // Edit Profile Button (Opens interactive edit dialog with all contact/personal fields)
+                if (isRefreshingStatus) {
+                    CircularProgressIndicator(
+                        color = MmyrvPrimary,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                // Edit Profile Button (Opens interactive edit dialog with academic and personal fields)
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFFEEF2FF),
-                    border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                    color = if (canEditAnyProfile) Color(0xFFEEF2FF) else Color(0xFFF1F5F9),
+                    border = BorderStroke(1.dp, if (canEditAnyProfile) Color(0xFFC7D2FE) else Color(0xFFCBD5E1)),
                     modifier = Modifier.clickable {
-                        val canEdit = !user.initialEditDone || user.allowedEdits.personal || user.allowedEdits.academic
-                        if (canEdit) {
+                        if (canEditAnyProfile) {
                             showEditProfileDialog = true
                         } else {
                             showLockedProfileAlert = true
@@ -316,18 +374,18 @@ fun StudentProfileScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            painter = painterResource(id = R.drawable.ic_edit),
+                            painter = painterResource(id = if (canEditAnyProfile) R.drawable.ic_edit else R.drawable.ic_lock),
                             contentDescription = "Edit Profile",
-                            tint = MmyrvPrimary,
+                            tint = if (canEditAnyProfile) MmyrvPrimary else Color(0xFF64748B),
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Edit Profile",
+                            text = if (canEditAnyProfile) "Edit Profile" else "Locked",
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = AppFontFamily,
-                            color = MmyrvPrimary
+                            color = if (canEditAnyProfile) MmyrvPrimary else Color(0xFF64748B)
                         )
                     }
                 }
@@ -695,8 +753,7 @@ fun StudentProfileScreen(
 
                         Button(
                             onClick = {
-                                val canReEnroll = !user.initialEditDone || user.allowedEdits.face
-                                if (canReEnroll) {
+                                if (canEditFace) {
                                     showLiveFaceScanner = true
                                 } else {
                                     showLockedFaceAlert = true
@@ -1069,7 +1126,129 @@ fun StudentProfileScreen(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // SECTION 1: Academic Information
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (canEditAcademic) Color(0xFFF0FDF4) else Color(0xFFF8FAFC))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_school),
+                                    contentDescription = null,
+                                    tint = if (canEditAcademic) Color(0xFF15803D) else Color(0xFF64748B),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Academic Information",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
+                                    color = if (canEditAcademic) Color(0xFF15803D) else Color(0xFF64748B)
+                                )
+                            }
+                            Text(
+                                text = if (canEditAcademic) "1-Time Edit Unlocked" else "Locked by Admin",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = if (canEditAcademic) Color(0xFF16A34A) else Color(0xFF94A3B8)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // College
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_school,
+                            label = "College / University",
+                            value = collegeInput,
+                            onValueChange = { collegeInput = it },
+                            placeholder = "Maharishi Mahesh Yogi Ramayan University",
+                            enabled = canEditAcademic
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Programme / Course
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_school,
+                            label = "Course & Programme",
+                            value = programmeInput,
+                            onValueChange = { programmeInput = it },
+                            placeholder = "e.g. B.Tech (Computer Science & Engineering)",
+                            enabled = canEditAcademic
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Semester
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_schedule,
+                            label = "Current Semester",
+                            value = semesterInput,
+                            onValueChange = { semesterInput = it },
+                            placeholder = "e.g. Semester V",
+                            enabled = canEditAcademic
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Department
+                        EditableRecordField(
+                            iconRes = R.drawable.ic_resources,
+                            label = "Department / Faculty",
+                            value = departmentInput,
+                            onValueChange = { departmentInput = it },
+                            placeholder = "e.g. Faculty of Engineering & Technology",
+                            enabled = canEditAcademic
+                        )
+
                         Spacer(modifier = Modifier.height(16.dp))
+
+                        // SECTION 2: Contact & Personal Details
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (canEditPersonal) Color(0xFFF0FDF4) else Color(0xFFF8FAFC))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_person),
+                                    contentDescription = null,
+                                    tint = if (canEditPersonal) Color(0xFF15803D) else Color(0xFF64748B),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Contact & Personal Details",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFontFamily,
+                                    color = if (canEditPersonal) Color(0xFF15803D) else Color(0xFF64748B)
+                                )
+                            }
+                            Text(
+                                text = if (canEditPersonal) "1-Time Edit Unlocked" else "Locked by Admin",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily,
+                                color = if (canEditPersonal) Color(0xFF16A34A) else Color(0xFF94A3B8)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Full Name
                         EditableRecordField(
@@ -1077,10 +1256,11 @@ fun StudentProfileScreen(
                             label = "Full Name",
                             value = fullNameInput,
                             onValueChange = { fullNameInput = it },
-                            placeholder = "e.g. Adarsh Kumar"
+                            placeholder = "e.g. Adarsh Kumar",
+                            enabled = canEditPersonal
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Phone Number
                         EditableRecordField(
@@ -1088,10 +1268,11 @@ fun StudentProfileScreen(
                             label = "Phone Number",
                             value = phoneInput,
                             onValueChange = { phoneInput = it },
-                            placeholder = "+91 98765 43210"
+                            placeholder = "+91 98765 43210",
+                            enabled = canEditPersonal
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // DOB
                         EditableRecordField(
@@ -1099,10 +1280,11 @@ fun StudentProfileScreen(
                             label = "Date of Birth (DOB)",
                             value = dobInput,
                             onValueChange = { dobInput = it },
-                            placeholder = "DD/MM/YYYY (e.g. 15/08/2004)"
+                            placeholder = "DD/MM/YYYY (e.g. 15/08/2004)",
+                            enabled = canEditPersonal
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Blood Group
                         EditableRecordField(
@@ -1110,10 +1292,11 @@ fun StudentProfileScreen(
                             label = "Blood Group",
                             value = bloodGroupInput,
                             onValueChange = { bloodGroupInput = it },
-                            placeholder = "e.g. B+, O+, A+, AB+"
+                            placeholder = "e.g. B+, O+, A+, AB+",
+                            enabled = canEditPersonal
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Permanent Address
                         EditableRecordField(
@@ -1121,10 +1304,11 @@ fun StudentProfileScreen(
                             label = "Permanent Address",
                             value = addressInput,
                             onValueChange = { addressInput = it },
-                            placeholder = "Ayodhya, Uttar Pradesh, 224001"
+                            placeholder = "Ayodhya, Uttar Pradesh, 224001",
+                            enabled = canEditPersonal
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Guardian Name
                         EditableRecordField(
@@ -1132,10 +1316,11 @@ fun StudentProfileScreen(
                             label = "Guardian / Parent Name",
                             value = guardianNameInput,
                             onValueChange = { guardianNameInput = it },
-                            placeholder = "Parent Full Name"
+                            placeholder = "Parent Full Name",
+                            enabled = canEditPersonal
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Guardian Phone
                         EditableRecordField(
@@ -1143,7 +1328,8 @@ fun StudentProfileScreen(
                             label = "Guardian Phone Number",
                             value = guardianPhoneInput,
                             onValueChange = { guardianPhoneInput = it },
-                            placeholder = "+91 98765 00000"
+                            placeholder = "+91 98765 00000",
+                            enabled = canEditPersonal
                         )
 
                         Spacer(modifier = Modifier.height(20.dp))
@@ -1582,13 +1768,13 @@ fun StudentProfileScreen(
             )
         }
 
-        // 9. Screen-Lock Live Front Camera Biometric Scanner Modal
+        // 9. Screen-Lock Live Front Camera Biometric Scanner Modal (Enrolls new template)
         if (showLiveFaceScanner) {
             LiveFaceScannerModal(
-                title = "Screen-Lock Biometric Scanner",
-                subtitle = "AI MobileFaceNet 3D Landmark & Liveness Check",
-                registeredBase64 = currentBiometricPhoto,
-                enrolledEmbedding = user.faceEmbedding.ifEmpty { null },
+                title = "Re-Enroll Biometric Face",
+                subtitle = "Consented 3-sample capture • 192D template generation",
+                registeredBase64 = "",
+                enrolledEmbedding = null,
                 expectedStudentName = fullNameInput.ifBlank { user.fullName },
                 expectedRollNo = user.rollNo,
                 onFaceVerified = { _, base64, embedding, _ ->
@@ -1663,28 +1849,59 @@ private fun EditableRecordField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    placeholder: String
+    placeholder: String,
+    enabled: Boolean = true
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(id = iconRes),
-                contentDescription = null,
-                tint = MmyrvPrimary,
-                modifier = Modifier.size(15.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = AppFontFamily,
-                color = MmyrvTextDark
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(id = iconRes),
+                    contentDescription = null,
+                    tint = if (enabled) MmyrvPrimary else Color(0xFF94A3B8),
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = AppFontFamily,
+                    color = if (enabled) MmyrvTextDark else Color(0xFF64748B)
+                )
+            }
+            if (!enabled) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFF1F5F9))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_lock),
+                        contentDescription = "Locked",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Locked",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = AppFontFamily,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.height(5.dp))
         OutlinedTextField(
@@ -1693,11 +1910,15 @@ private fun EditableRecordField(
             placeholder = { Text(placeholder, fontSize = 12.5.sp, color = Color(0xFF94A3B8), fontFamily = AppFontFamily) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(10.dp),
+            enabled = enabled,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MmyrvPrimary,
                 unfocusedBorderColor = Color(0xFFCBD5E1),
+                disabledBorderColor = Color(0xFFE2E8F0),
                 focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White
+                unfocusedContainerColor = Color.White,
+                disabledContainerColor = Color(0xFFF8FAFC),
+                disabledTextColor = Color(0xFF475569)
             ),
             singleLine = true
         )

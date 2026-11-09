@@ -157,6 +157,34 @@ fun LiveFaceScannerModal(
     var verifiedEmbedding by remember { mutableStateOf<FloatArray?>(null) }
     var verifiedScore by remember { mutableStateOf(0f) }
 
+    var resolvedTargetEmbedding by remember { mutableStateOf<FloatArray?>(null) }
+    var isResolvingTemplate by remember { mutableStateOf(false) }
+
+    LaunchedEffect(enrolledEmbedding, registeredBase64) {
+        if (enrolledEmbedding != null && enrolledEmbedding.size == FaceRecognitionEngine.EMBEDDING_DIM) {
+            resolvedTargetEmbedding = enrolledEmbedding.toFloatArray()
+        } else if (registeredBase64.isNotBlank()) {
+            isResolvingTemplate = true
+            withContext(Dispatchers.Default) {
+                try {
+                    val regBmp = FaceDetectionHelper.base64ToBitmap(registeredBase64)
+                    if (regBmp != null) {
+                        val detect = engine.detectFace(regBmp)
+                        val faceCrop = detect.croppedFaceBitmap ?: regBmp
+                        val emb = engine.generateEmbedding(faceCrop)
+                        resolvedTargetEmbedding = emb
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        isResolvingTemplate = false
+                    }
+                }
+            }
+        }
+    }
+
     val consentedSamples = remember { mutableListOf<FloatArray>() }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
@@ -373,21 +401,7 @@ fun LiveFaceScannerModal(
                                                                     val embedding = engine.generateEmbedding(detectResult.croppedFaceBitmap)
 
                                                                     // Check if Enrolled embedding is available for Recognition Mode
-                                                                    val targetEmbedding = when {
-                                                                        enrolledEmbedding != null && enrolledEmbedding.size == FaceRecognitionEngine.EMBEDDING_DIM -> {
-                                                                            enrolledEmbedding.toFloatArray()
-                                                                        }
-                                                                        registeredBase64.isNotBlank() -> {
-                                                                            val regBmp = FaceDetectionHelper.base64ToImageBitmap(registeredBase64)
-                                                                            // Generate embedding for enrolled photo
-                                                                            val regDetect = regBmp?.let {
-                                                                                val raw = FaceDetectionHelper.bitmapToBase64(bitmap) // fallback
-                                                                                null
-                                                                            }
-                                                                            null
-                                                                        }
-                                                                        else -> null
-                                                                    }
+                                                                    val targetEmbedding = resolvedTargetEmbedding
 
                                                                     if (targetEmbedding != null) {
                                                                         // RECOGNITION / ATTENDANCE MODE
@@ -424,10 +438,10 @@ fun LiveFaceScannerModal(
                                                                                 }
                                                                             } else {
                                                                                 recognitionState = RecognitionState.UNKNOWN_PERSON
-                                                                                statusMessage = "Access Denied: Unrecognized Person (${match.percentage}% match)"
+                                                                                statusMessage = "Hold steady... Verifying identity (${match.percentage}% match)"
                                                                             }
                                                                         }
-                                                                    } else {
+                                                                    } else if (!isResolvingTemplate) {
                                                                         // ENROLLMENT MODE (Consented 3-sample capture)
                                                                         consentedSamples.add(embedding)
                                                                         val progress = (consentedSamples.size / 3f).coerceIn(0f, 1f)
@@ -561,7 +575,7 @@ fun LiveFaceScannerModal(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = statusMessage,
+                            text = if (isResolvingTemplate) "Loading Registered Biometric Template..." else statusMessage,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = AppFontFamily,

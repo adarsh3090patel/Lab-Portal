@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.labportal.R
 import com.example.labportal.data.model.UserData
+import com.example.labportal.network.NetworkClient
 import com.example.labportal.ui.components.PortalBottomBar
 import com.example.labportal.ui.components.PortalTab
 import com.example.labportal.ui.components.PortalTopBar
@@ -82,6 +84,40 @@ fun DashboardScreen(
     val isAdmin = user.role.equals("Admin", ignoreCase = true)
     var currentUser by remember { mutableStateOf(user) }
     var showStudentProfilePage by remember { mutableStateOf(false) }
+
+    // Sync latest user permissions & block status from MongoDB Atlas
+    LaunchedEffect(currentUser.id, currentUser.rollNo) {
+        if (!isAdmin) {
+            try {
+                val uid = if (currentUser.id.isNotBlank()) currentUser.id else currentUser.rollNo
+                val res = NetworkClient.apiService.getUserStatus(uid)
+                if (res.isSuccessful && res.body() != null) {
+                    val status = res.body()!!
+                    currentUser = currentUser.copy(
+                        isBlocked = status.isBlocked,
+                        status = status.status,
+                        allowedEdits = status.allowedEdits,
+                        initialEditDone = status.initialEditDone
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Gate blocked student immediately
+    if (currentUser.isBlocked && !isAdmin) {
+        StudentBlockedScreen(
+            fullName = currentUser.fullName,
+            email = currentUser.email,
+            rollNo = currentUser.rollNo,
+            userId = if (currentUser.id.isNotBlank()) currentUser.id else currentUser.rollNo,
+            onUnblocked = {
+                currentUser = currentUser.copy(isBlocked = false, status = "approved")
+            },
+            onSignOut = onLogoutClick
+        )
+        return
+    }
 
     // Admin Student Approvals Fullscreen View
     if (showAdminApprovalsPage && isAdmin) {

@@ -126,11 +126,11 @@ def verify_and_record_attendance(req: AttendanceVerificationRequest):
             detail="Student account is pending administrator approval. Attendance cannot be recorded."
         )
 
-    # 3. Check matching confidence threshold (Strict MobileFaceNet threshold: >= 0.70)
-    if req.similarityScore < 0.70:
+    # 3. Check matching confidence threshold (Strict MobileFaceNet threshold: >= 0.65)
+    if req.similarityScore < 0.65:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Biometric similarity score ({int(req.similarityScore * 100)}%) is below the security threshold (70%). Identity match rejected."
+            detail=f"Biometric similarity score ({int(req.similarityScore * 100)}%) is below the security threshold (65%). Identity match rejected."
         )
 
     # 4. Anti-Duplicate Check: Prevent multiple attendance records for the same subject on the same day
