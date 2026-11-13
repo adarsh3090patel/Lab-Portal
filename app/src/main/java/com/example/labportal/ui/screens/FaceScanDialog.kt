@@ -118,7 +118,7 @@ fun FaceScanDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "AI MobileFaceNet 3D Biometric Verification",
+                    text = "Python DeepFace Facenet512 Verification",
                     fontSize = 12.sp,
                     fontFamily = AppFontFamily,
                     color = MmyrvTextMuted
@@ -272,73 +272,24 @@ fun FaceScanDialog(
     if (showLiveCameraModal) {
         LiveFaceScannerModal(
             title = "Live Facial Attendance",
-            subtitle = "AI MobileFaceNet 3D Landmark Match",
+            subtitle = "Python DeepFace Facenet512 Verification",
             registeredBase64 = user.facePhotoUrl,
             enrolledEmbedding = user.faceEmbedding.ifEmpty { null },
             expectedStudentName = user.fullName,
             expectedRollNo = user.rollNo,
-            onFaceVerified = { bitmap, _, embedding, similarity ->
+            studentId = user.id.ifBlank { user.rollNo },
+            subject = "Central Laboratory Practical",
+            onFaceVerified = { bitmap, _, _, similarity ->
                 realCapturedBitmap = bitmap
                 showLiveCameraModal = false
-                isScanning = true
-
-                // Call authenticated Backend Attendance Verification API
+                scanSuccess = true
+                verificationError = null
+                val pct = (similarity * 100).toInt()
+                verificationText = "Biometric Attendance Verified: ${user.fullName} (${pct}% DeepFace match)"
+                Toast.makeText(context, "Attendance Marked for Central Lab!", Toast.LENGTH_SHORT).show()
                 coroutineScope.launch {
-                    try {
-                        val studentIdentifier = user.id.ifBlank { user.rollNo }
-                        val response = NetworkClient.apiService.verifyAndRecordAttendance(
-                            AttendanceVerifyDto(
-                                studentId = studentIdentifier,
-                                rollNo = user.rollNo,
-                                subject = "Central Laboratory Practical",
-                                similarityScore = similarity,
-                                livenessScore = 1.0f,
-                                liveEmbedding = embedding.toList()
-                            )
-                        )
-                        isScanning = false
-
-                        if (response.isSuccessful && response.body() != null) {
-                            scanSuccess = true
-                            verificationError = null
-                            verificationText = response.body()!!.message
-                            Toast.makeText(context, response.body()!!.message, Toast.LENGTH_SHORT).show()
-                            // Auto-dismiss automatically without needing to press Done button
-                            coroutineScope.launch {
-                                kotlinx.coroutines.delay(1200)
-                                onDismiss()
-                            }
-                        } else {
-                            val err = response.errorBody()?.string() ?: "Attendance recording failed"
-                            val cleanMsg = try {
-                                JSONObject(err).optString("detail", err)
-                            } catch (_: Exception) { err }
-
-                            if (cleanMsg.contains("already recorded", ignoreCase = true)) {
-                                scanSuccess = true
-                                verificationError = null
-                                verificationText = cleanMsg
-                                Toast.makeText(context, cleanMsg, Toast.LENGTH_SHORT).show()
-                                coroutineScope.launch {
-                                    kotlinx.coroutines.delay(1200)
-                                    onDismiss()
-                                }
-                            } else {
-                                scanSuccess = false
-                                verificationError = cleanMsg
-                                Toast.makeText(context, cleanMsg, Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        isScanning = false
-                        scanSuccess = true
-                        verificationText = "Biometric Match Confirmed (Attendance recorded offline)"
-                        Toast.makeText(context, "Attendance Marked for Central Lab!", Toast.LENGTH_SHORT).show()
-                        coroutineScope.launch {
-                            kotlinx.coroutines.delay(1200)
-                            onDismiss()
-                        }
-                    }
+                    kotlinx.coroutines.delay(1200)
+                    onDismiss()
                 }
             },
             onFaceCaptured = { bitmap, _ ->

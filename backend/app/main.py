@@ -4,11 +4,12 @@ from app.database import get_database
 from app.routes.auth import router as auth_router
 from app.routes.admin import router as admin_router
 from app.routes.biometric import router as biometric_router
+from app.routes.deepface_biometric import router as deepface_biometric_router
 
 app = FastAPI(
     title="MMYRV LabPortal API",
-    description="Backend API for Maharishi Mahesh Yogi Ramayan University Lab Portal",
-    version="1.0.0"
+    description="Backend API for Maharishi Mahesh Yogi Ramayan University Lab Portal with Python DeepFace AI",
+    version="2.0.0"
 )
 
 # Enable CORS for mobile app & web clients
@@ -24,6 +25,8 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(biometric_router)
+app.include_router(deepface_biometric_router)
+
 
 @app.on_event("startup")
 def startup_db_client():

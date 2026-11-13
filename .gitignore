@@ -18,3 +18,4 @@ local.properties
 backend/node_modules/
 backend/.env
 backend/.vercel
+backend/.deepface/

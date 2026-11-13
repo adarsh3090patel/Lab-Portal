@@ -1843,15 +1843,16 @@ fun StudentProfileScreen(
         if (showLiveFaceScanner) {
             LiveFaceScannerModal(
                 title = "Re-Enroll Biometric Face",
-                subtitle = "Consented 3-sample capture • 192D template generation",
+                subtitle = "Python DeepFace Facenet512 • 512D Template",
                 registeredBase64 = "",
                 enrolledEmbedding = null,
                 expectedStudentName = fullNameInput.ifBlank { user.fullName },
                 expectedRollNo = user.rollNo,
+                studentId = user.id.ifBlank { user.rollNo },
                 onFaceVerified = { _, base64, embedding, _ ->
                     showLiveFaceScanner = false
                     currentBiometricPhoto = base64
-                    saveProfileToDatabase(newBiometricPhoto = base64, newEmbedding = embedding.toList())
+                    saveProfileToDatabase(newBiometricPhoto = base64, newEmbedding = embedding.toList().ifEmpty { null })
                 },
                 onFaceCaptured = { _, base64 ->
                     showLiveFaceScanner = false

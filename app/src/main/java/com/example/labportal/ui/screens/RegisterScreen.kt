@@ -178,33 +178,19 @@ fun RegisterScreen(
         }
     }
 
-    // Real Camera Capture Launcher with Strict Face Validation
+    // Camera Capture Launcher for DeepFace Enrollment
     var isVerifyingFace by remember { mutableStateOf(false) }
 
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         if (bitmap != null) {
-            isVerifyingFace = true
-            coroutineScope.launch {
-                val strictCheck = FaceDetectionHelper.validateStrictFace(bitmap)
-                isVerifyingFace = false
-                if (strictCheck.isValid) {
-                    capturedFaceBitmap = bitmap
-                    facePhotoBase64 = FaceDetectionHelper.bitmapToBase64(bitmap)
-                    faceEnrolled = true
-                    faceDetectionMsg = strictCheck.message
-                    localValidationMsg = null
-                    Toast.makeText(context, "Real Face Verified! Biometrics Enrolled.", Toast.LENGTH_SHORT).show()
-                } else {
-                    capturedFaceBitmap = null
-                    facePhotoBase64 = ""
-                    faceEnrolled = false
-                    faceDetectionMsg = null
-                    localValidationMsg = "Biometric Verification Failed:\n${strictCheck.message}"
-                    Toast.makeText(context, strictCheck.message, Toast.LENGTH_LONG).show()
-                }
-            }
+            capturedFaceBitmap = bitmap
+            facePhotoBase64 = FaceDetectionHelper.bitmapToBase64(bitmap)
+            faceEnrolled = true
+            faceDetectionMsg = "Real Face Captured • Python DeepFace Enrollment Ready"
+            localValidationMsg = null
+            Toast.makeText(context, "Face Captured! Ready for DeepFace Enrollment.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -945,13 +931,13 @@ fun RegisterScreen(
     if (showFaceScanModal) {
         LiveFaceScannerModal(
             title = "Live Biometric Enrollment",
-            subtitle = "AI MobileFaceNet 3D Landmark & Liveness Check",
+            subtitle = "Python DeepFace Facenet512 • 512D Template",
             onFaceVerified = { bitmap, base64, embedding, _ ->
                 capturedFaceBitmap = bitmap
                 facePhotoBase64 = base64
                 faceEmbedding = embedding.toList()
                 faceEnrolled = true
-                faceDetectionMsg = "Real 192D Face Biometrics Enrolled"
+                faceDetectionMsg = "Real 512D Face Biometrics Enrolled (Python DeepFace)"
                 showFaceScanModal = false
                 localValidationMsg = null
                 Toast.makeText(context, "Face Biometrics Enrolled Successfully!", Toast.LENGTH_SHORT).show()

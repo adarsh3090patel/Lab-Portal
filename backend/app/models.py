@@ -89,3 +89,22 @@ class AttendanceVerificationRequest(BaseModel):
 class BiometricRevokeRequest(BaseModel):
     userId: str
     reason: Optional[str] = "Biometric template reset"
+
+class DeepFaceEnrollRequest(BaseModel):
+    userId: str
+    rollNo: str
+    imageBase64: str
+    consentGiven: bool = True
+
+class DeepFaceAttendanceRequest(BaseModel):
+    studentId: str
+    rollNo: str
+    subject: str = "Central Laboratory Practical"
+    imageBase64: str
+    livenessData: Optional[Dict[str, Any]] = None
+
+class DeepFaceVerifyRequest(BaseModel):
+    userId: str
+    rollNo: Optional[str] = None
+    imageBase64: str
+

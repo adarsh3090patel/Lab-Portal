@@ -34,9 +34,6 @@ android {
     buildFeatures {
         compose = true
     }
-    androidResources {
-        noCompress += "tflite"
-    }
 }
 
 dependencies {
@@ -51,8 +48,6 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging)
-    implementation("com.google.android.gms:play-services-mlkit-face-detection:17.1.0")
-    implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("androidx.camera:camera-camera2:1.3.4")
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")

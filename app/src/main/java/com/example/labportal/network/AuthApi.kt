@@ -146,6 +146,36 @@ data class BiometricEnrollDto(
     val facePhotoUrl: String? = null
 )
 
+data class DeepFaceEnrollDto(
+    val userId: String,
+    val rollNo: String,
+    val imageBase64: String,
+    val consentGiven: Boolean = true
+)
+
+data class DeepFaceEnrollResponse(
+    val success: Boolean,
+    val message: String,
+    val userId: String? = null,
+    val rollNo: String? = null,
+    val dimensions: Int = 512,
+    val model: String = "Facenet512"
+)
+
+data class DeepFaceAttendanceDto(
+    val studentId: String,
+    val rollNo: String,
+    val subject: String = "Central Laboratory Practical",
+    val imageBase64: String,
+    val livenessData: Map<String, Any>? = null
+)
+
+data class DeepFaceAttendanceResponse(
+    val success: Boolean,
+    val message: String,
+    val attendance: AttendanceRecordDto? = null
+)
+
 data class AttendanceVerifyDto(
     val studentId: String,
     val rollNo: String,
@@ -285,11 +315,17 @@ interface AuthApiService {
     @POST("api/biometric/enroll")
     suspend fun enrollBiometricTemplate(@Body body: BiometricEnrollDto): Response<SimpleActionResponse>
 
+    @POST("api/biometric/deepface/enroll")
+    suspend fun enrollStudentDeepFace(@Body body: DeepFaceEnrollDto): Response<DeepFaceEnrollResponse>
+
     @GET("api/biometric/template/{userId}")
     suspend fun getBiometricTemplate(@retrofit2.http.Path("userId") userId: String): Response<BiometricTemplateResponse>
 
     @POST("api/biometric/verify-attendance")
     suspend fun verifyAndRecordAttendance(@Body body: AttendanceVerifyDto): Response<AttendanceVerifyResponse>
+
+    @POST("api/biometric/deepface/verify-attendance")
+    suspend fun verifyAttendanceDeepFace(@Body body: DeepFaceAttendanceDto): Response<DeepFaceAttendanceResponse>
 
     @GET("api/biometric/attendance/student/{studentId}")
     suspend fun getStudentAttendanceHistory(@retrofit2.http.Path("studentId") studentId: String): Response<AttendanceHistoryResponse>

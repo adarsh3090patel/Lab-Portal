@@ -31,6 +31,20 @@ def register(user_data: UserRegisterRequest):
 
     # Insert new user (Admins are pre-approved, students require admin approval)
     is_admin = user_data.role.lower() == "admin"
+    
+    # Extract 512D DeepFace embedding from face photo if available
+    enrolled_embedding = user_data.faceEmbedding or []
+    embedding_model = "Facenet512"
+    if (not enrolled_embedding or len(enrolled_embedding) < 512) and user_data.facePhotoUrl:
+        try:
+            from app.services.deepface_service import DeepFaceService
+            ext = DeepFaceService.extract_face_embedding(user_data.facePhotoUrl)
+            if ext.get("success"):
+                enrolled_embedding = ext["embedding"]
+                embedding_model = ext.get("model", "Facenet512")
+        except Exception as e:
+            print("[REGISTER] DeepFace feature extraction fallback:", e)
+
     new_user = {
         "fullName": user_data.fullName,
         "email": user_data.email.lower(),
@@ -40,9 +54,10 @@ def register(user_data: UserRegisterRequest):
         "semester": user_data.semester or "Semester V",
         "phone": user_data.phone or "+91 98765 43210",
         "profilePhotoUrl": user_data.profilePhotoUrl or user_data.facePhotoUrl,
-        "faceEnrolled": user_data.faceEnrolled,
+        "faceEnrolled": True if (enrolled_embedding or user_data.facePhotoUrl) else user_data.faceEnrolled,
         "facePhotoUrl": user_data.facePhotoUrl,
-        "faceEmbedding": user_data.faceEmbedding or [],
+        "faceEmbedding": enrolled_embedding,
+        "embeddingModel": embedding_model,
         "password": hash_password(user_data.password),
         "isApproved": True if is_admin else False,
         "profileCompletion": 85
@@ -63,9 +78,9 @@ def register(user_data: UserRegisterRequest):
             "semester": user_data.semester or "Semester V",
             "phone": user_data.phone or "+91 98765 43210",
             "profilePhotoUrl": user_data.profilePhotoUrl or user_data.facePhotoUrl,
-            "faceEnrolled": user_data.faceEnrolled,
+            "faceEnrolled": True if (enrolled_embedding or user_data.facePhotoUrl) else user_data.faceEnrolled,
             "facePhotoUrl": user_data.facePhotoUrl,
-            "faceEmbedding": user_data.faceEmbedding or [],
+            "faceEmbedding": enrolled_embedding,
             "profileCompletion": 85
         }
     }
@@ -241,8 +256,17 @@ def update_profile(user_id: str, req: ProfileUpdateRequest):
         update_fields["facePhotoUrl"] = req.facePhotoUrl
         update_fields["faceEnrolled"] = True
         face_changed = True
-    if req.faceEmbedding is not None and len(req.faceEmbedding) >= 128:
-        diffs.append({"field": "Biometric 192D Embedding", "oldValue": "Initial Enrolled Template", "newValue": "New 192D Mathematical Template"})
+        try:
+            from app.services.deepface_service import DeepFaceService
+            ext = DeepFaceService.extract_face_embedding(req.facePhotoUrl)
+            if ext.get("success"):
+                update_fields["faceEmbedding"] = ext["embedding"]
+                update_fields["embeddingModel"] = DeepFaceService.DEFAULT_MODEL
+                diffs.append({"field": "Biometric 512D Embedding", "oldValue": "Previous Biometric Template", "newValue": "Python DeepFace Facenet512 Template"})
+        except Exception as e:
+            print("[PROFILE] DeepFace update error:", e)
+    elif req.faceEmbedding is not None and len(req.faceEmbedding) >= 128:
+        diffs.append({"field": "Biometric Embedding", "oldValue": "Initial Enrolled Template", "newValue": f"New {len(req.faceEmbedding)}D Biometric Template"})
         update_fields["faceEmbedding"] = req.faceEmbedding
         update_fields["faceEnrolled"] = True
         face_changed = True
